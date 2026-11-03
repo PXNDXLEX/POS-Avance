@@ -230,6 +230,17 @@ CREATE POLICY "Permitir lectura de configuraciones a usuarios autenticados"
   TO authenticated
   USING (true);
 
+DROP POLICY IF EXISTS "Administradores y Superadmins pueden insertar configuraciones" ON public.system_settings;
+CREATE POLICY "Administradores y Superadmins pueden insertar configuraciones"
+  ON public.system_settings FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid() AND (profiles.role IN ('admin', 'superadmin') OR profiles.is_superadmin = true)
+    )
+  );
+
 DROP POLICY IF EXISTS "Administradores y Superadmins pueden modificar configuraciones" ON public.system_settings;
 CREATE POLICY "Administradores y Superadmins pueden modificar configuraciones"
   ON public.system_settings FOR UPDATE
@@ -237,7 +248,13 @@ CREATE POLICY "Administradores y Superadmins pueden modificar configuraciones"
   USING (
     EXISTS (
       SELECT 1 FROM public.profiles
-      WHERE profiles.id = auth.uid() AND profiles.role IN ('admin', 'superadmin')
+      WHERE profiles.id = auth.uid() AND (profiles.role IN ('admin', 'superadmin') OR profiles.is_superadmin = true)
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid() AND (profiles.role IN ('admin', 'superadmin') OR profiles.is_superadmin = true)
     )
   );
 

@@ -76,16 +76,50 @@ export async function updateSystemSettings(
   }
 
   try {
-    const { error } = await supabase
+    const cleanUserId = isValidUuid(userId) ? userId : null;
+    const updatePayload: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (settings.default_commission_percentage !== undefined) {
+      updatePayload.default_commission_percentage = Number(settings.default_commission_percentage);
+    }
+    if (settings.business_name !== undefined) {
+      updatePayload.business_name = settings.business_name.trim();
+    }
+    if (settings.notice_text !== undefined) {
+      updatePayload.notice_text = settings.notice_text.trim();
+    }
+    if (cleanUserId) {
+      updatePayload.updated_by = cleanUserId;
+    }
+
+    // Usar primero UPDATE para evaluar directamente la política de actualización (evita fallo de INSERT en upsert)
+    const { data, error: updateError } = await supabase
+      .from('system_settings')
+      .update(updatePayload)
+      .eq('id', 'default')
+      .select();
+
+    if (!updateError && data && data.length > 0) {
+      return {};
+    }
+
+    // Si la fila 'default' no existía aún en la base de datos, insertar con fallback
+    const { error: insertError } = await supabase
       .from('system_settings')
       .upsert({
         id: 'default',
-        ...settings,
-        updated_by: userId,
-        updated_at: new Date().toISOString(),
+        default_commission_percentage: 10,
+        business_name: 'Avance de Efectivo',
+        ...updatePayload,
       });
 
-    if (error) return { error: error.message };
+    if (insertError) {
+      console.error('Error al actualizar configuración:', insertError);
+      return { error: insertError.message };
+    }
+
     return {};
   } catch (err: unknown) {
     return { error: err instanceof Error ? err.message : 'Error al actualizar configuración' };
