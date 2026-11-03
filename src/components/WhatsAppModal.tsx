@@ -43,6 +43,13 @@ export function WhatsAppModal({ transaction, onClose, onCaptureUpdated }: WhatsA
   const [currentComprobante, setCurrentComprobante] = useState(transaction?.comprobante_url || null);
   const [error, setError] = useState<string | null>(null);
 
+  React.useEffect(() => {
+    if (transaction) {
+      setCurrentComprobante(transaction.comprobante_url || null);
+      setMessage(generateWhatsAppMessage(transaction));
+    }
+  }, [transaction]);
+
   if (!transaction) return null;
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -177,6 +184,9 @@ export function WhatsAppModal({ transaction, onClose, onCaptureUpdated }: WhatsA
   };
 
   const handleOpenWhatsApp = () => {
+    if (currentComprobante) {
+      handleCopyImage();
+    }
     const link = buildWhatsAppLink(transaction.cliente_telefono, message);
     window.open(link, '_blank', 'noopener,noreferrer');
   };
@@ -233,8 +243,15 @@ export function WhatsAppModal({ transaction, onClose, onCaptureUpdated }: WhatsA
           {/* Subir o Visualizar Comprobante */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                Capture de Transferencia (Comprobante)
+              <label className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
+                {currentComprobante ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Comprobante Adjunto Listo</span>
+                  </>
+                ) : (
+                  <span>Capture de Transferencia (Comprobante)</span>
+                )}
               </label>
               <button
                 type="button"
@@ -243,7 +260,7 @@ export function WhatsAppModal({ transaction, onClose, onCaptureUpdated }: WhatsA
                 className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
               >
                 <Upload className="w-3 h-3" />
-                {currentComprobante ? 'Cambiar Capture' : 'Subir Capture'}
+                {currentComprobante ? 'Cambiar Imagen' : 'Subir Imagen (Opcional)'}
               </button>
             </div>
 
@@ -334,7 +351,7 @@ export function WhatsAppModal({ transaction, onClose, onCaptureUpdated }: WhatsA
             </div>
 
             <textarea
-              rows={7}
+              rows={5}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               className="w-full p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl font-mono text-xs text-gray-800 dark:text-gray-200 leading-relaxed focus:outline-none focus:ring-2 focus:ring-[#25D366]"
@@ -343,30 +360,30 @@ export function WhatsAppModal({ transaction, onClose, onCaptureUpdated }: WhatsA
 
           {/* Botones de acción */}
           <div className="space-y-2 pt-2">
+            <button
+              type="button"
+              onClick={handleOpenWhatsApp}
+              className="w-full py-3.5 px-4 bg-[#25D366] hover:bg-[#1ebd5b] text-white rounded-xl font-bold text-sm shadow-md shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <MessageCircle className="w-5 h-5 fill-current shrink-0" />
+              <span>Abrir WhatsApp de {transaction.cliente_nombre.split(' ')[0]}</span>
+            </button>
+
             {currentComprobante && (
               <button
                 type="button"
                 onClick={handleShareWithImage}
                 disabled={isSharing}
-                className="w-full py-3 px-4 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold text-sm shadow-md shadow-emerald-700/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-3 px-4 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold text-xs sm:text-sm shadow-md shadow-emerald-700/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 {isSharing ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
                 ) : (
-                  <Share2 className="w-5 h-5" />
+                  <Share2 className="w-4 h-4 shrink-0" />
                 )}
-                <span>Compartir Comprobante e Imagen a WhatsApp</span>
+                <span>Compartir Imagen + Texto (WhatsApp Móvil / App)</span>
               </button>
             )}
-
-            <button
-              type="button"
-              onClick={handleOpenWhatsApp}
-              className="w-full py-3 px-4 bg-[#25D366] hover:bg-[#1ebd5b] text-white rounded-xl font-bold text-sm shadow-md shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <MessageCircle className="w-5 h-5 fill-current" />
-              <span>Abrir WhatsApp con Mensaje</span>
-            </button>
 
             <button
               type="button"

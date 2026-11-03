@@ -19,7 +19,7 @@ import {
 interface MarkPaidModalProps {
   transaction: Transaction | null;
   onClose: () => void;
-  onSuccess: (updatedTxId: string, openWhatsApp?: boolean) => void;
+  onSuccess: (updatedTxId: string, openWhatsApp?: boolean, updatedTx?: Transaction) => void;
 }
 
 export function MarkPaidModal({ transaction, onClose, onSuccess }: MarkPaidModalProps) {
@@ -81,7 +81,17 @@ export function MarkPaidModal({ transaction, onClose, onSuccess }: MarkPaidModal
         return;
       }
 
-      onSuccess(transaction.id, openWhatsApp);
+      const updatedTx: Transaction = {
+        ...transaction,
+        estado: 'pagado',
+        fecha_pago: new Date().toISOString(),
+        referencia_pago: referencia.trim() || null,
+        comprobante_url: finalComprobanteUrl,
+        pagado_por: user?.id,
+        pagador_nombre: profile?.full_name,
+      };
+
+      onSuccess(transaction.id, openWhatsApp, updatedTx);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error inesperado';
       setError(msg);

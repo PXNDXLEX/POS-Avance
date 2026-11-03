@@ -54,30 +54,28 @@ export default function DashboardPage() {
     setSelectedTxDelete(null);
   };
 
-  const handleMarkPaidSuccess = (txId: string, openWhatsApp?: boolean) => {
-    // Actualizar estado local inmediatamente
-    const target = transactions.find((t) => t.id === txId);
+  const handleMarkPaidSuccess = (txId: string, openWhatsApp?: boolean, updatedTx?: Transaction) => {
+    // Actualizar estado local inmediatamente con la transacción actualizada (con comprobante y referencia)
+    const baseTx = updatedTx || transactions.find((t) => t.id === txId);
+    if (!baseTx) return;
+
+    const mergedTx: Transaction = {
+      ...baseTx,
+      estado: 'pagado',
+      fecha_pago: baseTx.fecha_pago || new Date().toISOString(),
+      comprobante_url: updatedTx?.comprobante_url || baseTx.comprobante_url || null,
+      referencia_pago: updatedTx?.referencia_pago || baseTx.referencia_pago || null,
+    };
+
     setTransactions((prev) =>
-      prev.map((t) =>
-        t.id === txId
-          ? {
-              ...t,
-              estado: 'pagado',
-              fecha_pago: new Date().toISOString(),
-            }
-          : t
-      )
+      prev.map((t) => (t.id === txId ? mergedTx : t))
     );
 
     setSelectedTxMarkPaid(null);
 
-    // Si marcó para enviar WhatsApp de una vez, abrir el modal de WhatsApp
-    if (openWhatsApp && target) {
-      setSelectedTxWhatsApp({
-        ...target,
-        estado: 'pagado',
-        fecha_pago: new Date().toISOString(),
-      });
+    // Si marcó para enviar WhatsApp de una vez, abrir el modal de WhatsApp con la transacción que YA tiene el comprobante
+    if (openWhatsApp) {
+      setSelectedTxWhatsApp(mergedTx);
     }
 
     // Refrescar datos en segundo plano
