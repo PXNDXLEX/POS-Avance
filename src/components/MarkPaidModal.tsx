@@ -161,7 +161,7 @@ export function MarkPaidModal({ transaction, onClose, onSuccess }: MarkPaidModal
                 type="text"
                 value={referencia}
                 onChange={(e) => setReferencia(e.target.value)}
-                placeholder="Ej: 84920412"
+                placeholder="Nro. de confirmación o referencia"
                 className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-gray-900 dark:text-white"
               />
             </div>

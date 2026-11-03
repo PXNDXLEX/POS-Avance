@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BankSelect } from './BankSelect';
 import { Bank, Transaction } from '@/lib/types';
 import {
@@ -17,11 +17,11 @@ import {
 import {
   createTransaction,
   getSystemSettings,
-  findRecentClientByCedula,
+  searchClientsByName,
+  ClientRecord,
 } from '@/lib/transactions';
 import { useAuth } from '@/context/AuthContext';
 import {
-  DollarSign,
   Percent,
   User,
   Phone,
@@ -29,9 +29,12 @@ import {
   AlertTriangle,
   CheckCircle,
   Copy,
-  Sparkles,
   ArrowRight,
   Calculator,
+  Search,
+  Check,
+  Building2,
+  Loader2,
 } from 'lucide-react';
 
 interface TransactionFormProps {
@@ -42,7 +45,7 @@ interface TransactionFormProps {
 export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
   const { user, profile } = useAuth();
 
-  // Form Fields
+  // Campos del Formulario
   const [nombre, setNombre] = useState('');
   const [cedula, setCedula] = useState('');
   const [telefono, setTelefono] = useState('');
@@ -51,18 +54,18 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
   const [comisionPorcentajeStr, setComisionPorcentajeStr] = useState('10');
   const [notas, setNotas] = useState('');
 
-  // UI / State
+  // Sugerencias de clientes por Nombre
+  const [clientSuggestions, setClientSuggestions] = useState<ClientRecord[]>([]);
+  const [isSearchingClients, setIsSearchingClients] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  // UI / Errores
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [recurrentClient, setRecurrentClient] = useState<{
-    nombre: string;
-    telefono: string;
-    banco_codigo: string;
-    banco_nombre: string;
-  } | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
 
-  // Cargar porcentaje de comisión por defecto de la configuración
+  // Cargar porcentaje de comisión por defecto
   useEffect(() => {
     getSystemSettings().then((settings) => {
       if (settings?.default_commission_percentage) {
@@ -71,38 +74,61 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
     });
   }, []);
 
-  // Detector de cliente frecuente al escribir cédula
+  // Cerrar sugerencias al hacer clic fuera
   useEffect(() => {
-    const cleanCedula = cedula.replace(/\D/g, '');
-    if (cleanCedula.length >= 6) {
-      findRecentClientByCedula(cleanCedula).then((client) => {
-        if (client && client.nombre !== nombre) {
-          setRecurrentClient(client);
-        } else {
-          setRecurrentClient(null);
-        }
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        searchContainerRef.current &&
+        !searchContainerRef.current.contains(event.target as Node)
+      ) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Búsqueda en vivo de clientes recurrentes al escribir el Nombre
+  useEffect(() => {
+    if (nombre.trim().length >= 2) {
+      setIsSearchingClients(true);
+      searchClientsByName(nombre.trim()).then((results) => {
+        setClientSuggestions(results);
+        setShowSuggestions(results.length > 0);
+        setIsSearchingClients(false);
       });
     } else {
-      setRecurrentClient(null);
+      setClientSuggestions([]);
+      setShowSuggestions(false);
     }
-  }, [cedula, nombre]);
+  }, [nombre]);
 
   // Cálculos matemáticos en vivo
   const montoBruto = parseFloat(montoBrutoStr.replace(',', '.')) || 0;
   const comisionPorcentaje = parseFloat(comisionPorcentajeStr.replace(',', '.')) || 0;
-  const montoComision = Math.round((montoBruto * (comisionPorcentaje / 100)) * 100) / 100;
+  const montoComision = Math.round(montoBruto * (comisionPorcentaje / 100) * 100) / 100;
   const montoNeto = Math.max(0, Math.round((montoBruto - montoComision) * 100) / 100);
 
-  const applyRecurrentClient = () => {
-    if (!recurrentClient) return;
-    setNombre(recurrentClient.nombre);
-    setTelefono(recurrentClient.telefono);
+  const handleSelectClient = (client: ClientRecord) => {
+    setNombre(client.nombre);
+    setCedula(client.cedula);
+    setTelefono(client.telefono);
     setSelectedBank({
-      code: recurrentClient.banco_codigo,
-      name: recurrentClient.banco_nombre,
-      shortName: recurrentClient.banco_nombre,
+      code: client.banco_codigo,
+      name: client.banco_nombre,
+      shortName: client.banco_nombre,
     });
-    setRecurrentClient(null);
+    setShowSuggestions(false);
+
+    // Limpiar errores previos si estaban
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.nombre;
+      delete next.cedula;
+      delete next.telefono;
+      delete next.banco;
+      return next;
+    });
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -144,12 +170,12 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
 
     const cedulaValidation = validateVenezuelanCedula(cedula);
     if (!cedulaValidation.isValid) {
-      newErrors.cedula = cedulaValidation.error || 'Cédula inválida.';
+      newErrors.cedula = cedulaValidation.error || 'Cédula inválida (6 a 8 dígitos numéricos).';
     }
 
     const phoneValidation = validateVenezuelanPhone(telefono);
     if (!phoneValidation.isValid) {
-      newErrors.telefono = phoneValidation.error || 'Teléfono inválido.';
+      newErrors.telefono = phoneValidation.error || 'Teléfono inválido (11 dígitos).';
     }
 
     if (!selectedBank) {
@@ -166,14 +192,21 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
       newErrors.comision = commValidation.error || 'Porcentaje inválido (0 - 100).';
     }
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    if (Object.keys(newErrors).length > 0) {
+      newErrors.general = 'Por favor complete todos los campos obligatorios marcados en rojo.';
+      setErrors(newErrors);
+      return false;
+    }
+
+    setErrors({});
+    return true;
   };
 
   const handleSubmit = async (andCopyPagoMovil: boolean = false) => {
     if (!validateAll()) return;
     setIsSubmitting(true);
     setSuccessMessage('');
+    setErrors({});
 
     try {
       const res = await createTransaction(
@@ -192,11 +225,11 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
           notas: notas.trim() || undefined,
         },
         user?.id,
-        profile?.full_name
+        profile?.full_name || 'Operador'
       );
 
       if (res.error) {
-        setErrors({ general: res.error });
+        setErrors({ general: `Error al guardar: ${res.error}` });
         setIsSubmitting(false);
         return;
       }
@@ -208,13 +241,13 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
         copied = true;
       }
 
-      setSuccessMessage('¡Operación registrada con éxito!');
+      setSuccessMessage('¡Operación registrada con éxito en el sistema!');
 
       setTimeout(() => {
         if (onSuccess && res.data) {
           onSuccess(res.data, copied);
         }
-      }, 500);
+      }, 400);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error inesperado al registrar';
       setErrors({ general: msg });
@@ -255,7 +288,7 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
         </div>
       )}
 
-      {/* NOTA IMPORTANTE OBLIGATORIA */}
+      {/* NOTA IMPORTANTE */}
       <div className="mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 text-amber-900 dark:text-amber-200 text-sm flex items-start gap-3">
         <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
         <div>
@@ -269,7 +302,7 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* COLUMNA IZQUIERDA: DATOS DEL CLIENTE Y MONTO */}
+        {/* COLUMNA IZQUIERDA: DATOS DEL CLIENTE */}
         <div className="lg:col-span-7 space-y-5">
           <div className="bg-gray-50/70 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-100 dark:border-gray-800 space-y-4">
             <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider flex items-center gap-2">
@@ -277,7 +310,96 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
               Datos del Cliente
             </h3>
 
-            {/* CÉDULA Y AUTOCOMPLETE */}
+            {/* 1. NOMBRE COMPLETO CON BÚSQUEDA Y MINIATURA */}
+            <div className="relative" ref={searchContainerRef}>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  Nombre Completo <span className="text-red-500">*</span>
+                </label>
+                <span className="text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1">
+                  <Search className="w-3 h-3" />
+                  Búsqueda automática
+                </span>
+              </div>
+
+              <div className="relative">
+                <User className="absolute left-3.5 top-3 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={nombre}
+                  onFocus={() => {
+                    if (clientSuggestions.length > 0) setShowSuggestions(true);
+                  }}
+                  onChange={(e) => {
+                    setNombre(e.target.value);
+                    if (errors.nombre) {
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.nombre;
+                        return next;
+                      });
+                    }
+                  }}
+                  placeholder="Nombre y apellido según Pago Móvil"
+                  className={`w-full pl-10 pr-4 py-2.5 bg-white dark:bg-gray-800 border rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${
+                    errors.nombre
+                      ? 'border-red-500 ring-red-100 dark:ring-red-950'
+                      : 'border-gray-300 dark:border-gray-700 focus:border-blue-500 focus:ring-blue-100 dark:focus:ring-blue-950'
+                  }`}
+                />
+              </div>
+
+              {errors.nombre && (
+                <p className="mt-1 text-xs text-red-500 font-medium">{errors.nombre}</p>
+              )}
+
+              {/* MINIATURA FLOTANTE DE RESULTADOS DE BÚSQUEDA */}
+              {showSuggestions && clientSuggestions.length > 0 && (
+                <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100 divide-y divide-gray-100 dark:divide-gray-700">
+                  <div className="px-3.5 py-2 bg-gray-50/80 dark:bg-gray-900/80 text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center justify-between">
+                    <span>Clientes frecuentes encontrados</span>
+                    <span className="text-[10px] text-blue-600 font-semibold">
+                      Haz clic para autocompletar
+                    </span>
+                  </div>
+
+                  {clientSuggestions.map((client, idx) => (
+                    <button
+                      key={`${client.cedula}-${idx}`}
+                      type="button"
+                      onClick={() => handleSelectClient(client)}
+                      className="w-full p-3 text-left hover:bg-blue-50/80 dark:hover:bg-blue-900/30 transition-colors flex items-center justify-between gap-3 cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 flex items-center justify-center font-bold text-xs shrink-0 group-hover:scale-105 transition-transform">
+                          {client.nombre.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-bold text-sm text-gray-900 dark:text-white truncate">
+                            {client.nombre}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2 mt-0.5">
+                            <span className="font-mono font-semibold text-blue-600 dark:text-blue-400">
+                              V-{client.cedula}
+                            </span>
+                            <span>•</span>
+                            <span className="truncate">{client.banco_nombre}</span>
+                            <span>•</span>
+                            <span className="font-mono">{client.telefono}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 p-1.5 text-blue-600 dark:text-blue-400 rounded-lg group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                        <Check className="w-4 h-4" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 2. CÉDULA DE IDENTIDAD (8 dígitos) */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-sm font-semibold text-gray-700 dark:text-gray-200">
@@ -296,7 +418,7 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
                   inputMode="numeric"
                   value={cedula}
                   onChange={handleCedulaChange}
-                  placeholder="Ej: 25156888"
+                  placeholder="12345678"
                   className={`w-full pl-9 pr-4 py-2.5 bg-white dark:bg-gray-800 border rounded-xl font-mono text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${
                     errors.cedula
                       ? 'border-red-500 ring-red-100 dark:ring-red-950'
@@ -307,58 +429,9 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
               {errors.cedula && (
                 <p className="mt-1 text-xs text-red-500 font-medium">{errors.cedula}</p>
               )}
-
-              {/* Botón de Autocompletar Cliente Frecuente */}
-              {recurrentClient && (
-                <div className="mt-2 p-2.5 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 rounded-lg flex items-center justify-between text-xs text-blue-900 dark:text-blue-200 animate-in fade-in">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                    <span>
-                      Cliente frecuente encontrado: <strong>{recurrentClient.nombre}</strong>
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={applyRecurrentClient}
-                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-md shadow-sm transition-colors text-xs"
-                  >
-                    Cargar datos
-                  </button>
-                </div>
-              )}
             </div>
 
-            {/* NOMBRE COMPLETO */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">
-                Nombre Completo <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={nombre}
-                onChange={(e) => {
-                  setNombre(e.target.value);
-                  if (errors.nombre) {
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.nombre;
-                      return next;
-                    });
-                  }
-                }}
-                placeholder="Nombre y Apellido según Pago Móvil"
-                className={`w-full px-3.5 py-2.5 bg-white dark:bg-gray-800 border rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${
-                  errors.nombre
-                    ? 'border-red-500 ring-red-100 dark:ring-red-950'
-                    : 'border-gray-300 dark:border-gray-700 focus:border-blue-500 focus:ring-blue-100 dark:focus:ring-blue-950'
-                }`}
-              />
-              {errors.nombre && (
-                <p className="mt-1 text-xs text-red-500 font-medium">{errors.nombre}</p>
-              )}
-            </div>
-
-            {/* TELÉFONO */}
+            {/* 3. TELÉFONO PAGO MÓVIL */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-sm font-semibold text-gray-700 dark:text-gray-200">
@@ -375,7 +448,7 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
                   inputMode="numeric"
                   value={telefono}
                   onChange={handlePhoneChange}
-                  placeholder="Ej: 04248525656"
+                  placeholder="04140000000"
                   className={`w-full pl-10 pr-4 py-2.5 bg-white dark:bg-gray-800 border rounded-xl font-mono text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${
                     errors.telefono
                       ? 'border-red-500 ring-red-100 dark:ring-red-950'
@@ -391,7 +464,7 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
               )}
             </div>
 
-            {/* BANCO */}
+            {/* 4. BANCO DESTINO */}
             <div>
               <BankSelect
                 value={selectedBank?.code || ''}
@@ -410,7 +483,7 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
             </div>
           </div>
 
-          {/* NOTAS ADICIONALES */}
+          {/* NOTAS */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">
               Notas u Observaciones (Opcional)
@@ -419,13 +492,13 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
               type="text"
               value={notas}
               onChange={(e) => setNotas(e.target.value)}
-              placeholder="Ej: Pago de tarjeta de débito Banesco lote #412"
+              placeholder="Detalle o lote de la operación..."
               className="w-full px-3.5 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </div>
 
-        {/* COLUMNA DERECHA: SECCIÓN DE COMISIÓN Y RESUMEN FINANCIERO */}
+        {/* COLUMNA DERECHA: MONTO Y COMISIÓN */}
         <div className="lg:col-span-5 flex flex-col justify-between space-y-5">
           <div className="bg-gradient-to-br from-gray-50 to-blue-50/30 dark:from-gray-800/80 dark:to-blue-950/20 p-5 rounded-2xl border border-blue-100 dark:border-blue-900/40 space-y-5">
             <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider flex items-center gap-2">
@@ -433,7 +506,7 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
               Monto y Comisión del Avance
             </h3>
 
-            {/* MONTO BRUTO PASADO POR EL PUNTO */}
+            {/* MONTO EN POS */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">
                 Monto pasado por el POS (Bruto) <span className="text-red-500">*</span>
@@ -469,7 +542,7 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
               )}
             </div>
 
-            {/* PORCENTAJE DE COMISIÓN */}
+            {/* % DE COMISIÓN */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-sm font-semibold text-gray-700 dark:text-gray-200">
@@ -510,7 +583,7 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
               )}
             </div>
 
-            {/* TARJETA DE RESUMEN FINANCIERO */}
+            {/* RESUMEN FINANCIERO */}
             <div className="p-4 bg-white dark:bg-gray-900/90 rounded-xl border border-blue-200 dark:border-blue-900/60 space-y-3">
               <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
                 <span>Cobrado en Punto de Venta:</span>
@@ -520,9 +593,7 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
               </div>
 
               <div className="flex items-center justify-between text-sm text-amber-700 dark:text-amber-400">
-                <span className="flex items-center gap-1">
-                  <span>Comisión retenida ({comisionPorcentaje}%):</span>
-                </span>
+                <span>Comisión retenida ({comisionPorcentaje}%):</span>
                 <span className="font-mono font-semibold">
                   - {formatCurrencyVE(montoComision)}
                 </span>
@@ -549,7 +620,7 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
             {selectedBank && telefono && cedula && montoNeto > 0 && (
               <div className="p-3 bg-gray-100/80 dark:bg-gray-800/80 rounded-xl border border-gray-200 dark:border-gray-700">
                 <span className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1">
-                  Vista previa de datos Pago Móvil:
+                  Vista previa Pago Móvil:
                 </span>
                 <div className="font-mono text-xs text-gray-700 dark:text-gray-300 leading-relaxed bg-white dark:bg-gray-950 p-2 rounded-lg border border-gray-200 dark:border-gray-800">
                   <div>{selectedBank.code}</div>
@@ -561,7 +632,23 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
             )}
           </div>
 
-          {/* BOTONES DE ACCIÓN */}
+          {/* AVISO DE ERROR VISIBLE JUNTO A LOS BOTONES */}
+          {errors.general && (
+            <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/70 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-xs sm:text-sm flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="font-bold">No se pudo procesar la operación:</p>
+                <p className="mt-0.5 text-xs">{errors.general}</p>
+                {errors.general.includes('does not exist') && (
+                  <p className="mt-1 text-[11px] text-red-600 dark:text-red-400 font-medium">
+                    💡 Asegúrate de ejecutar el script <code>supabase_schema.sql</code> en el SQL Editor de Supabase para crear las tablas del sistema.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* BOTONES */}
           <div className="space-y-2.5 pt-2">
             <button
               type="button"
@@ -569,8 +656,12 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
               onClick={() => handleSubmit(true)}
               className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-md shadow-emerald-600/20 transition-all hover:shadow-lg disabled:opacity-50 cursor-pointer"
             >
-              <Copy className="w-4 h-4" />
-              <span>Registrar y Copiar Pago Móvil</span>
+              {isSubmitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+              <span>{isSubmitting ? 'Guardando en sistema...' : 'Registrar y Copiar Pago Móvil'}</span>
             </button>
 
             <button
@@ -579,8 +670,12 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
               onClick={() => handleSubmit(false)}
               className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-md shadow-blue-600/20 transition-all hover:shadow-lg disabled:opacity-50 cursor-pointer"
             >
-              <span>Solo Registrar Avance</span>
-              <ArrowRight className="w-4 h-4" />
+              {isSubmitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <span>Solo Registrar Avance</span>
+              )}
+              {!isSubmitting && <ArrowRight className="w-4 h-4" />}
             </button>
 
             {onCancel && (
@@ -599,4 +694,3 @@ export function TransactionForm({ onSuccess, onCancel }: TransactionFormProps) {
     </div>
   );
 }
-

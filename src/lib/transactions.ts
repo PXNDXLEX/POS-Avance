@@ -13,45 +13,24 @@ export const DEFAULT_SETTINGS: SystemSettings = {
   notice_text: 'Recuerde verificar que los datos coincidan exactamente con el Pago Móvil del cliente.',
 };
 
-// Transacciones de prueba para modo demostración
+// Transacciones de prueba para modo demostración (sin datos reales)
 const INITIAL_DEMO_TRANSACTIONS: Transaction[] = [
   {
     id: 'demo-tx-1',
-    cliente_nombre: 'Carlos Eduardo Mendoza',
-    cliente_cedula: '25156888',
-    cliente_telefono: '04248525656',
+    cliente_nombre: 'Cliente de Prueba',
+    cliente_cedula: '12345678',
+    cliente_telefono: '04140000000',
     cliente_banco_codigo: '0102',
     cliente_banco_nombre: 'Banco de Venezuela',
-    monto_bruto: 17111.11,
+    monto_bruto: 1000.0,
     comision_porcentaje: 10.0,
-    monto_comision: 1711.11,
-    monto_neto: 15400.0,
+    monto_comision: 100.0,
+    monto_neto: 900.0,
     estado: 'pendiente',
     fecha_operacion: new Date().toISOString(),
     creado_por: 'demo-admin-id',
-    creador_nombre: 'Administrador Principal',
+    creador_nombre: 'Administrador',
     created_at: new Date().toISOString(),
-  },
-  {
-    id: 'demo-tx-2',
-    cliente_nombre: 'María Alejandra Gómez',
-    cliente_cedula: '20456123',
-    cliente_telefono: '04141234567',
-    cliente_banco_codigo: '0134',
-    cliente_banco_nombre: 'Banesco',
-    monto_bruto: 5000.0,
-    comision_porcentaje: 12.0,
-    monto_comision: 600.0,
-    monto_neto: 4400.0,
-    estado: 'pagado',
-    fecha_operacion: new Date(Date.now() - 86400000).toISOString(),
-    fecha_pago: new Date().toISOString(),
-    referencia_pago: '84920412',
-    creado_por: 'demo-operador-id',
-    creador_nombre: 'Operador de Caja',
-    pagado_por: 'demo-operador-id',
-    pagador_nombre: 'Operador de Caja',
-    created_at: new Date(Date.now() - 86400000).toISOString(),
   },
 ];
 
@@ -130,28 +109,30 @@ export async function getTransactions(): Promise<Transaction[]> {
   try {
     const { data, error } = await supabase
       .from('transactions')
-      .select(`
-        *,
-        creador:creado_por(full_name),
-        pagador:pagado_por(full_name)
-      `)
+      .select('*')
       .order('fecha_operacion', { ascending: false });
 
     if (error) {
-      console.error('Error fetching transactions:', error);
+      console.error('Error fetching transactions:', error.message);
       return [];
     }
 
     return (data || []).map((t: any) => ({
       ...t,
-      creador_nombre: t.creador?.full_name || 'Desconocido',
-      pagador_nombre: t.pagador?.full_name || null,
+      creador_nombre: t.creador_nombre || 'Operador',
+      pagador_nombre: t.pagador_nombre || null,
     }));
   } catch (err) {
-    console.error('Error:', err);
+    console.error('Error fetching transactions:', err);
     return [];
   }
 }
+
+// Validar formato UUID para evitar errores de sintaxis en columnas tipo UUID de Postgres
+const isValidUuid = (id?: string | null): boolean => {
+  if (!id) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+};
 
 export async function createTransaction(
   payload: Omit<Transaction, 'id' | 'created_at' | 'updated_at'>,
@@ -171,52 +152,65 @@ export async function createTransaction(
     const updated = [newTx, ...current];
     localStorage.setItem(LOCAL_STORAGE_TX_KEY, JSON.stringify(updated));
 
-    // Audit log
-    await addAuditLog({
+    addAuditLog({
       transaction_id: newTx.id,
       accion: 'creacion',
       detalles: `Avance creado por Bs. ${newTx.monto_bruto} (%${newTx.comision_porcentaje} comision) para ${newTx.cliente_nombre}`,
       usuario_id: userId,
       usuario_nombre: userFullName,
-    });
+    }).catch(() => {});
 
     return { data: newTx };
   }
 
   try {
+    const cleanUserId = isValidUuid(userId) ? userId : null;
+    const insertPayload = {
+      cliente_nombre: payload.cliente_nombre.trim(),
+      cliente_cedula: payload.cliente_cedula.trim(),
+      cliente_telefono: payload.cliente_telefono.trim(),
+      cliente_banco_codigo: payload.cliente_banco_codigo,
+      cliente_banco_nombre: payload.cliente_banco_nombre,
+      monto_bruto: Number(payload.monto_bruto),
+      comision_porcentaje: Number(payload.comision_porcentaje),
+      monto_comision: Number(payload.monto_comision),
+      monto_neto: Number(payload.monto_neto),
+      estado: payload.estado || 'pendiente',
+      fecha_operacion: payload.fecha_operacion || new Date().toISOString(),
+      notas: payload.notas?.trim() || null,
+      creado_por: cleanUserId,
+    };
+
     const { data, error } = await supabase
       .from('transactions')
-      .insert({
-        cliente_nombre: payload.cliente_nombre,
-        cliente_cedula: payload.cliente_cedula,
-        cliente_telefono: payload.cliente_telefono,
-        cliente_banco_codigo: payload.cliente_banco_codigo,
-        cliente_banco_nombre: payload.cliente_banco_nombre,
-        monto_bruto: payload.monto_bruto,
-        comision_porcentaje: payload.comision_porcentaje,
-        monto_comision: payload.monto_comision,
-        monto_neto: payload.monto_neto,
-        estado: payload.estado || 'pendiente',
-        fecha_operacion: payload.fecha_operacion || new Date().toISOString(),
-        notas: payload.notas || null,
-        creado_por: userId,
-      })
-      .select()
-      .single();
+      .insert(insertPayload)
+      .select();
 
-    if (error) return { error: error.message };
+    if (error) {
+      console.error('Error al insertar transaccion en Supabase:', error);
+      return { error: error.message };
+    }
 
-    await addAuditLog({
-      transaction_id: data.id,
+    const savedTx: Transaction = (data && data[0]) ? (data[0] as Transaction) : {
+      ...payload,
+      id: `tx-${Date.now()}`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    // Auditoría no bloqueante
+    addAuditLog({
+      transaction_id: savedTx.id,
       accion: 'creacion',
       detalles: `Avance registrado por Bs. ${payload.monto_bruto} con comisión de ${payload.comision_porcentaje}% (${payload.monto_comision} Bs) para ${payload.cliente_nombre}`,
-      usuario_id: userId,
+      usuario_id: cleanUserId || undefined,
       usuario_nombre: userFullName,
-    });
+    }).catch((err) => console.warn('Aviso auditoria:', err));
 
-    return { data };
+    return { data: savedTx };
   } catch (err: unknown) {
-    return { error: err instanceof Error ? err.message : 'Error al registrar avance' };
+    const msg = err instanceof Error ? err.message : 'Error al registrar avance';
+    return { error: msg };
   }
 }
 
@@ -248,13 +242,13 @@ export async function markAsPaid(
 
     localStorage.setItem(LOCAL_STORAGE_TX_KEY, JSON.stringify(updated));
 
-    await addAuditLog({
+    addAuditLog({
       transaction_id: id,
       accion: 'marcado_pagado',
       detalles: `Marcado como pagado${referencia ? ` con referencia: ${referencia}` : ''}${comprobanteUrl ? ' (comprobante adjunto)' : ''}`,
       usuario_id: userId,
       usuario_nombre: userFullName,
-    });
+    }).catch(() => {});
 
     return {};
   }
@@ -265,22 +259,22 @@ export async function markAsPaid(
       .update({
         estado: 'pagado',
         fecha_pago: now,
-        referencia_pago: referencia || null,
-        comprobante_url: comprobanteUrl,
-        pagado_por: userId,
+        referencia_pago: referencia ? referencia.trim() : null,
+        comprobante_url: comprobanteUrl || null,
+        pagado_por: isValidUuid(userId) ? userId : null,
         updated_at: now,
       })
       .eq('id', id);
 
     if (error) return { error: error.message };
 
-    await addAuditLog({
+    addAuditLog({
       transaction_id: id,
       accion: 'marcado_pagado',
       detalles: `Marcado como transferido/pagado${referencia ? `. Ref: ${referencia}` : ''}`,
-      usuario_id: userId,
+      usuario_id: isValidUuid(userId) ? userId : undefined,
       usuario_nombre: userFullName,
-    });
+    }).catch(() => {});
 
     return {};
   } catch (err: unknown) {
@@ -293,7 +287,6 @@ export async function uploadComprobante(
   transactionId: string
 ): Promise<{ url?: string; error?: string }> {
   if (!isSupabaseConfigured || !supabase) {
-    // En modo demo local convertimos a Data URL base64
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -352,11 +345,11 @@ export async function addAuditLog(
       transaction_id: log.transaction_id,
       accion: log.accion,
       detalles: log.detalles,
-      usuario_id: log.usuario_id,
-      usuario_nombre: log.usuario_nombre,
+      usuario_id: isValidUuid(log.usuario_id) ? log.usuario_id : null,
+      usuario_nombre: log.usuario_nombre || null,
     });
   } catch (err) {
-    console.error('Error saving audit log:', err);
+    console.warn('Error saving audit log:', err);
   }
 }
 
@@ -390,24 +383,44 @@ export async function getAuditLogs(transactionId?: string): Promise<AuditLog[]> 
   }
 }
 
-/**
- * Busca clientes recurrentes a partir de transacciones previas
- * Permite autocompletar nombre, teléfono y banco ingresando la cédula!
- */
-export async function findRecentClientByCedula(cedula: string) {
-  const clean = cedula.replace(/\D/g, '');
-  if (clean.length < 5) return null;
-
-  const transactions = await getTransactions();
-  const found = transactions.find(t => t.cliente_cedula === clean);
-  if (found) {
-    return {
-      nombre: found.cliente_nombre,
-      telefono: found.cliente_telefono,
-      banco_codigo: found.cliente_banco_codigo,
-      banco_nombre: found.cliente_banco_nombre,
-    };
-  }
-  return null;
+export interface ClientRecord {
+  nombre: string;
+  cedula: string;
+  telefono: string;
+  banco_codigo: string;
+  banco_nombre: string;
 }
 
+/**
+ * Busca clientes a partir de transacciones previas usando su Nombre Completo
+ * Devuelve lista de sugerencias con nombre y cédula para mostrar en la miniatura de búsqueda
+ */
+export async function searchClientsByName(nameQuery: string): Promise<ClientRecord[]> {
+  const q = nameQuery.trim().toLowerCase();
+  if (q.length < 2) return [];
+
+  const transactions = await getTransactions();
+  const clientsMap = new Map<string, ClientRecord>();
+
+  for (const t of transactions) {
+    if (!t.cliente_nombre) continue;
+    const matchName = t.cliente_nombre.toLowerCase().includes(q);
+    const matchCedula = t.cliente_cedula && t.cliente_cedula.includes(q);
+
+    if (matchName || matchCedula) {
+      const key = `${t.cliente_cedula}_${t.cliente_nombre.toLowerCase()}`;
+      if (!clientsMap.has(key)) {
+        clientsMap.set(key, {
+          nombre: t.cliente_nombre,
+          cedula: t.cliente_cedula,
+          telefono: t.cliente_telefono,
+          banco_codigo: t.cliente_banco_codigo,
+          banco_nombre: t.cliente_banco_nombre,
+        });
+      }
+    }
+    if (clientsMap.size >= 6) break;
+  }
+
+  return Array.from(clientsMap.values());
+}

@@ -30,9 +30,9 @@ Listo para ser desplegado en **Vercel** en pocos minutos.
      *Ejemplo:*
      ```text
      0102
-     042485256565
-     25156888
-     15400,00
+     04140000000
+     12345678
+     1000,00
      ```
 
 4. **Control de Pagos y Auditoría Inmutable:**
@@ -106,9 +106,9 @@ Abre [http://localhost:3000](http://localhost:3000) en tu navegador.
 
 El registro público de usuarios se encuentra **deshabilitado**. Todo el acceso se gestiona desde el interior del sistema:
 
-### 1. Credenciales del Superadministrador Principal:
-- **Usuario:** `otto` (o `otto@posavance.com`)
-- **Contraseña:** `25156888`
+### 1. Acceso del Superadministrador Principal:
+- **Usuario:** `otto`
+- **Contraseña:** Configurada en el script SQL de creación.
 
 Este usuario se crea o restablece ejecutando el bloque **#10** de [`supabase_schema.sql`](./supabase_schema.sql) en el SQL Editor de Supabase.
 

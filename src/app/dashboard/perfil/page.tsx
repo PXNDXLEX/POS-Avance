@@ -241,7 +241,7 @@ export default function PerfilPage() {
           <h3 className="font-bold text-base">Superadministrador Principal (otto)</h3>
         </div>
         <p className="text-xs text-purple-800 dark:text-purple-300 leading-relaxed">
-          El usuario principal es <strong>otto</strong>. Nadie puede borrarlo ni verlo desde las cuentas de otros administradores. En caso de requerir restablecer sus credenciales (clave: <code>25156888</code>), ejecute el bloque #10 de <code>supabase_schema.sql</code> en el SQL Editor de Supabase.
+          El usuario principal es <strong>otto</strong>. Nadie puede borrarlo ni verlo desde las cuentas de otros administradores. En caso de requerir restablecer sus credenciales de acceso, ejecute el bloque #10 de <code>supabase_schema.sql</code> en el SQL Editor de Supabase.
         </p>
       </div>
     </div>

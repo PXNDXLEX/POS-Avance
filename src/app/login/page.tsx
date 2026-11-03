@@ -44,12 +44,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleFillSuperAdmin = () => {
-    setUsernameOrEmail('otto');
-    setPassword('25156888');
-    setError(null);
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/20 to-gray-100 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
@@ -148,31 +142,9 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Tarjeta Informativa de Acceso Superadmin */}
-          <div className="mt-6 pt-5 border-t border-gray-100 dark:border-gray-800 space-y-3">
-            <div className="p-3 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-2xl flex items-center justify-between text-xs text-purple-900 dark:text-purple-200">
-              <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-purple-600 shrink-0" />
-                <div>
-                  <span className="font-bold block">Superadministrador</span>
-                  <span className="text-[11px] text-purple-700 dark:text-purple-300">
-                    Usuario: <strong>otto</strong>
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleFillSuperAdmin}
-                className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg text-xs shadow-xs transition-colors cursor-pointer"
-              >
-                Cargar
-              </button>
-            </div>
-
-            <p className="text-[11px] text-gray-400 text-center">
-              🔒 El registro público está deshabilitado. Los nuevos operadores y administradores se gestionan desde el panel interno.
-            </p>
-          </div>
+          <p className="mt-6 text-[11px] text-gray-400 text-center">
+            🔒 El registro público está deshabilitado. Acceso exclusivo para el personal autorizado.
+          </p>
         </div>
       </div>
     </div>

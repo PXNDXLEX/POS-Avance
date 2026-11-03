@@ -60,9 +60,9 @@ ON CONFLICT (id) DO NOTHING;
 CREATE TABLE IF NOT EXISTS public.transactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   cliente_nombre TEXT NOT NULL,
-  cliente_cedula VARCHAR(8) NOT NULL,
-  cliente_telefono VARCHAR(11) NOT NULL,
-  cliente_banco_codigo VARCHAR(4) NOT NULL,
+  cliente_cedula VARCHAR(20) NOT NULL,
+  cliente_telefono VARCHAR(15) NOT NULL,
+  cliente_banco_codigo VARCHAR(10) NOT NULL,
   cliente_banco_nombre TEXT NOT NULL,
   monto_bruto NUMERIC(15, 2) NOT NULL CHECK (monto_bruto > 0),
   comision_porcentaje NUMERIC(5, 2) NOT NULL CHECK (comision_porcentaje >= 0 AND comision_porcentaje <= 100),
@@ -79,6 +79,10 @@ CREATE TABLE IF NOT EXISTS public.transactions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
+
+-- Asegurar tipo VARCHAR(20) en caso de tablas existentes
+ALTER TABLE IF EXISTS public.transactions ALTER COLUMN cliente_cedula TYPE VARCHAR(20);
+ALTER TABLE IF EXISTS public.transactions ALTER COLUMN cliente_telefono TYPE VARCHAR(15);
 
 -- Índices para búsquedas rápidas
 CREATE INDEX IF NOT EXISTS idx_transactions_estado ON public.transactions(estado);
@@ -104,15 +108,18 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('comprobantes', 'comprobantes', true)
 ON CONFLICT (id) DO UPDATE SET public = true;
 
+DROP POLICY IF EXISTS "Acceso publico para ver comprobantes" ON storage.objects;
 CREATE POLICY "Acceso publico para ver comprobantes"
 ON storage.objects FOR SELECT
 USING (bucket_id = 'comprobantes');
 
+DROP POLICY IF EXISTS "Usuarios autenticados pueden subir comprobantes" ON storage.objects;
 CREATE POLICY "Usuarios autenticados pueden subir comprobantes"
 ON storage.objects FOR INSERT
 TO authenticated
 WITH CHECK (bucket_id = 'comprobantes');
 
+DROP POLICY IF EXISTS "Usuarios autenticados pueden actualizar comprobantes" ON storage.objects;
 CREATE POLICY "Usuarios autenticados pueden actualizar comprobantes"
 ON storage.objects FOR UPDATE
 TO authenticated
@@ -183,7 +190,7 @@ ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para Profiles
--- Nadie excepto el propio superadmin puede ver la fila del superadmin
+DROP POLICY IF EXISTS "Lectura de perfiles con proteccion de superadmin" ON public.profiles;
 CREATE POLICY "Lectura de perfiles con proteccion de superadmin"
   ON public.profiles FOR SELECT
   TO authenticated
@@ -197,13 +204,14 @@ CREATE POLICY "Lectura de perfiles con proteccion de superadmin"
     ))
   );
 
+DROP POLICY IF EXISTS "Usuarios pueden actualizar su propio perfil" ON public.profiles;
 CREATE POLICY "Usuarios pueden actualizar su propio perfil"
   ON public.profiles FOR UPDATE
   TO authenticated
   USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id);
 
--- Nadie puede borrar al superadmin
+DROP POLICY IF EXISTS "Eliminar perfiles excepto superadmin" ON public.profiles;
 CREATE POLICY "Eliminar perfiles excepto superadmin"
   ON public.profiles FOR DELETE
   TO authenticated
@@ -216,11 +224,13 @@ CREATE POLICY "Eliminar perfiles excepto superadmin"
   );
 
 -- Políticas para System Settings
+DROP POLICY IF EXISTS "Permitir lectura de configuraciones a usuarios autenticados" ON public.system_settings;
 CREATE POLICY "Permitir lectura de configuraciones a usuarios autenticados"
   ON public.system_settings FOR SELECT
   TO authenticated
   USING (true);
 
+DROP POLICY IF EXISTS "Administradores y Superadmins pueden modificar configuraciones" ON public.system_settings;
 CREATE POLICY "Administradores y Superadmins pueden modificar configuraciones"
   ON public.system_settings FOR UPDATE
   TO authenticated
@@ -232,21 +242,25 @@ CREATE POLICY "Administradores y Superadmins pueden modificar configuraciones"
   );
 
 -- Políticas para Transactions
+DROP POLICY IF EXISTS "Usuarios autenticados pueden ver transacciones" ON public.transactions;
 CREATE POLICY "Usuarios autenticados pueden ver transacciones"
   ON public.transactions FOR SELECT
   TO authenticated
   USING (true);
 
+DROP POLICY IF EXISTS "Usuarios autenticados pueden crear transacciones" ON public.transactions;
 CREATE POLICY "Usuarios autenticados pueden crear transacciones"
   ON public.transactions FOR INSERT
   TO authenticated
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Usuarios autenticados pueden actualizar transacciones" ON public.transactions;
 CREATE POLICY "Usuarios autenticados pueden actualizar transacciones"
   ON public.transactions FOR UPDATE
   TO authenticated
   USING (true);
 
+DROP POLICY IF EXISTS "Administradores y Superadmins pueden eliminar transacciones" ON public.transactions;
 CREATE POLICY "Administradores y Superadmins pueden eliminar transacciones"
   ON public.transactions FOR DELETE
   TO authenticated
@@ -258,11 +272,13 @@ CREATE POLICY "Administradores y Superadmins pueden eliminar transacciones"
   );
 
 -- Políticas para Audit Logs
+DROP POLICY IF EXISTS "Usuarios autenticados pueden ver logs de auditoria" ON public.audit_logs;
 CREATE POLICY "Usuarios autenticados pueden ver logs de auditoria"
   ON public.audit_logs FOR SELECT
   TO authenticated
   USING (true);
 
+DROP POLICY IF EXISTS "Usuarios autenticados pueden insertar logs de auditoria" ON public.audit_logs;
 CREATE POLICY "Usuarios autenticados pueden insertar logs de auditoria"
   ON public.audit_logs FOR INSERT
   TO authenticated

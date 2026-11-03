@@ -43,8 +43,7 @@ export function validateVenezuelanPhone(phone: string): { isValid: boolean; erro
  * Valida la cédula de identidad venezolana.
  * Requisitos:
  * - Solo números.
- * - Exactamente 8 dígitos.
- * (Si tiene 7 dígitos, se puede advertir o autocompletar con cero a la izquierda si el usuario lo desea).
+ * - Entre 6 y 8 dígitos numéricos (estándar nacional para personas naturales).
  */
 export function validateVenezuelanCedula(cedula: string): { isValid: boolean; error?: string } {
   const clean = cedula.replace(/\D/g, '');
@@ -57,10 +56,10 @@ export function validateVenezuelanCedula(cedula: string): { isValid: boolean; er
     return { isValid: false, error: 'La cédula debe contener solo números.' };
   }
 
-  if (clean.length !== 8) {
+  if (clean.length < 6 || clean.length > 8) {
     return {
       isValid: false,
-      error: `La cédula debe tener exactamente 8 dígitos (actual: ${clean.length}).`,
+      error: `La cédula debe tener entre 6 y 8 dígitos numéricos (actual: ${clean.length}).`,
     };
   }
 

@@ -29,9 +29,9 @@ export function formatMontoPagoMovil(amount: number): string {
  *
  * Ejemplo:
  * 0102
- * 042485256565
- * 25156888
- * 15400,00
+ * 04140000000
+ * 12345678
+ * 1000,00
  */
 export function generatePagoMovilClipboardText(tx: Pick<Transaction, 'cliente_banco_codigo' | 'cliente_telefono' | 'cliente_cedula' | 'monto_neto'>): string {
   const banco = tx.cliente_banco_codigo.trim();
