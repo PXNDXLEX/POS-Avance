@@ -141,13 +141,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return {};
       }
 
+      const normalizedEmail = email.trim().toLowerCase();
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: normalizedEmail,
         password,
       });
 
       if (error) {
         setIsLoading(false);
+        if (
+          error.message.toLowerCase().includes('invalid login credentials') ||
+          error.message.toLowerCase().includes('email not confirmed')
+        ) {
+          return {
+            error:
+              'Credenciales inválidas o correo no confirmado en Supabase. Si te acabas de registrar, tu correo puede requerir confirmación en Supabase (desactiva "Confirm email" en Authentication -> Providers -> Email o confirma el usuario con el comando SQL).',
+          };
+        }
         return { error: error.message };
       }
 
@@ -173,8 +183,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ): Promise<{ error?: string }> => {
     setIsLoading(true);
     try {
+      const normalized = email.toLowerCase().trim();
+
       if (!isSupabaseConfigured || !supabase) {
-        const normalized = email.toLowerCase().trim();
         const demo: Profile = {
           id: `demo-${Date.now()}`,
           email: normalized,
@@ -190,7 +201,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: normalized,
         password,
         options: {
           data: {
@@ -204,7 +215,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { error: error.message };
       }
 
-      if (data.user) {
+      // Si data.session es null, Supabase requiere confirmación por email
+      if (data.user && !data.session) {
+        setIsLoading(false);
+        return {
+          error:
+            'Usuario creado en Supabase, pero requiere confirmación de correo. Para acceder sin confirmar emails, ve a tu panel de Supabase: Authentication -> Providers -> Email y desactiva la opción "Confirm email".',
+        };
+      }
+
+      if (data.user && data.session) {
         setUser(data.user);
         const prof = await loadSupabaseProfile(data.user.id, data.user.email || '');
         setProfile(prof);

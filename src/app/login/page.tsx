@@ -111,9 +111,24 @@ export default function LoginPage() {
           )}
 
           {error && (
-            <div className="mb-5 p-3.5 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-xl text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{error}</span>
+            <div className="mb-5 p-3.5 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-xl text-xs text-red-700 dark:text-red-300 space-y-2">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+              {error.includes('Supabase') && (
+                <div className="mt-2 p-2.5 bg-white dark:bg-gray-900 rounded-lg border border-red-200 dark:border-red-900 text-[11px] space-y-1.5">
+                  <span className="font-bold block text-gray-800 dark:text-gray-200">
+                    💡 Solución rápida en Supabase:
+                  </span>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Ejecuta esto en el <strong>SQL Editor</strong> de Supabase para activar tu cuenta:
+                  </p>
+                  <code className="block p-1.5 bg-gray-100 dark:bg-gray-800 font-mono text-[10px] rounded text-blue-600 dark:text-blue-400 select-all">
+                    UPDATE auth.users SET email_confirmed_at = now() WHERE email_confirmed_at IS NULL;
+                  </code>
+                </div>
+              )}
             </div>
           )}
 

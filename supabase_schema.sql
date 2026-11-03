@@ -95,7 +95,21 @@ ON storage.objects FOR UPDATE
 TO authenticated
 USING (bucket_id = 'comprobantes');
 
--- 7. TRIGGER PARA CREACIÓN AUTOMÁTICA DE PERFILES AL REGISTRAR USUARIO
+-- 7. TRIGGER PARA CREACIÓN AUTOMÁTICA DE PERFILES Y AUTO-CONFIRMACIÓN
+-- Trigger para auto-confirmar el correo inmediatamente (evita el bloqueo por "Confirm email")
+CREATE OR REPLACE FUNCTION public.auto_confirm_new_user()
+RETURNS trigger AS $$
+BEGIN
+  new.email_confirmed_at = COALESCE(new.email_confirmed_at, timezone('utc'::text, now()));
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_auto_confirm ON auth.users;
+CREATE TRIGGER on_auth_user_auto_confirm
+  BEFORE INSERT ON auth.users
+  FOR EACH ROW EXECUTE PROCEDURE public.auto_confirm_new_user();
+
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 DECLARE
@@ -218,6 +232,22 @@ CREATE POLICY "Usuarios autenticados pueden insertar logs de auditoria"
   WITH CHECK (true);
 
 -- ==============================================================================
+-- INSTRUCCIONES PARA ACTIVAR Y CONFIRMAR USUARIOS (INVALID LOGIN CREDENTIALS):
+-- 
+-- Si acabas de registrar un usuario y al intentar iniciar sesión te dice:
+-- "Invalid login credentials", es porque Supabase tiene activada por defecto la opción
+-- "Confirm email" y el correo no ha sido verificado.
+--
+-- Para confirmar inmediatamente a todos los usuarios creados y poder iniciar sesión:
+--
+--    UPDATE auth.users
+--    SET email_confirmed_at = timezone('utc'::text, now())
+--    WHERE email_confirmed_at IS NULL;
+--
+-- Y para desactivar la confirmación obligatoria en el panel:
+-- Ve a: Authentication -> Providers -> Email -> Desmarca "Confirm email" -> Save.
+--
+-- ------------------------------------------------------------------------------
 -- INSTRUCCIONES PARA EL USUARIO ADMINISTRADOR DE EMERGENCIA:
 -- 
 -- 1. Puedes registrar tu usuario normalmente desde la pantalla de login.
