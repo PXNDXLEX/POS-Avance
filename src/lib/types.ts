@@ -1,10 +1,12 @@
-export type UserRole = 'admin' | 'operador';
+export type UserRole = 'superadmin' | 'admin' | 'operador';
 
 export interface Profile {
   id: string;
   email: string;
   full_name: string;
   role: UserRole;
+  is_superadmin?: boolean;
+  username?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -60,4 +62,3 @@ export interface Bank {
   name: string;
   shortName: string;
 }
-

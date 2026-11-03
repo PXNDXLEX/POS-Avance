@@ -5,16 +5,41 @@
 
 -- 1. EXTENSIONES
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- 2. TABLA DE PERFILES (Profiles)
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   full_name TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'operador' CHECK (role IN ('admin', 'operador')),
+  role TEXT NOT NULL DEFAULT 'operador' CHECK (role IN ('superadmin', 'admin', 'operador')),
+  is_superadmin BOOLEAN NOT NULL DEFAULT false,
+  username TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
+
+-- Si la tabla ya existía, asegurarse de tener la columna is_superadmin y el constraint actualizado
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'is_superadmin'
+  ) THEN
+    ALTER TABLE public.profiles ADD COLUMN is_superadmin BOOLEAN NOT NULL DEFAULT false;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'username'
+  ) THEN
+    ALTER TABLE public.profiles ADD COLUMN username TEXT;
+  END IF;
+
+  -- Actualizar el constraint de rol para incluir 'superadmin'
+  ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
+  ALTER TABLE public.profiles ADD CONSTRAINT profiles_role_check CHECK (role IN ('superadmin', 'admin', 'operador'));
+END $$;
 
 -- 3. TABLA DE CONFIGURACIÓN DEL SISTEMA (System Settings)
 CREATE TABLE IF NOT EXISTS public.system_settings (
@@ -75,12 +100,10 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_transaction ON public.audit_logs(trans
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON public.audit_logs(created_at DESC);
 
 -- 6. CONFIGURACIÓN DEL BUCKET DE STORAGE (Comprobantes)
--- Inserta el bucket 'comprobantes' si no existe
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('comprobantes', 'comprobantes', true)
 ON CONFLICT (id) DO UPDATE SET public = true;
 
--- Políticas de Storage para el bucket comprobantes
 CREATE POLICY "Acceso publico para ver comprobantes"
 ON storage.objects FOR SELECT
 USING (bucket_id = 'comprobantes');
@@ -96,7 +119,6 @@ TO authenticated
 USING (bucket_id = 'comprobantes');
 
 -- 7. TRIGGER PARA CREACIÓN AUTOMÁTICA DE PERFILES Y AUTO-CONFIRMACIÓN
--- Trigger para auto-confirmar el correo inmediatamente (evita el bloqueo por "Confirm email")
 CREATE OR REPLACE FUNCTION public.auto_confirm_new_user()
 RETURNS trigger AS $$
 BEGIN
@@ -113,25 +135,28 @@ CREATE TRIGGER on_auth_user_auto_confirm
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 DECLARE
-  is_first_user BOOLEAN;
   initial_role TEXT;
+  is_super BOOLEAN;
 BEGIN
-  -- Si es el primer usuario registrado en la base de datos, asignarle rol de admin automáticamente
-  SELECT NOT EXISTS (SELECT 1 FROM public.profiles) INTO is_first_user;
-  
-  IF is_first_user THEN
-    initial_role := 'admin';
-  ELSE
-    initial_role := COALESCE(new.raw_user_meta_data->>'role', 'operador');
-  END IF;
+  initial_role := COALESCE(new.raw_user_meta_data->>'role', 'operador');
+  is_super := (initial_role = 'superadmin');
 
-  INSERT INTO public.profiles (id, email, full_name, role)
+  INSERT INTO public.profiles (id, email, full_name, role, is_superadmin, username)
   VALUES (
     new.id,
     new.email,
     COALESCE(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
-    initial_role
-  );
+    initial_role,
+    is_super,
+    COALESCE(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1))
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    email = EXCLUDED.email,
+    full_name = EXCLUDED.full_name,
+    role = EXCLUDED.role,
+    is_superadmin = EXCLUDED.is_superadmin,
+    username = EXCLUDED.username;
+
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -167,10 +192,19 @@ ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para Profiles
-CREATE POLICY "Permitir lectura de perfiles a usuarios autenticados"
+-- Nadie excepto el propio superadmin puede ver la fila del superadmin
+CREATE POLICY "Lectura de perfiles con proteccion de superadmin"
   ON public.profiles FOR SELECT
   TO authenticated
-  USING (true);
+  USING (
+    -- El superadmin puede ver a todos
+    (auth.uid() = id) OR
+    (NOT is_superadmin AND role != 'superadmin') OR
+    (EXISTS (
+      SELECT 1 FROM public.profiles p 
+      WHERE p.id = auth.uid() AND (p.role = 'superadmin' OR p.is_superadmin = true)
+    ))
+  );
 
 CREATE POLICY "Usuarios pueden actualizar su propio perfil"
   ON public.profiles FOR UPDATE
@@ -178,19 +212,31 @@ CREATE POLICY "Usuarios pueden actualizar su propio perfil"
   USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id);
 
+-- Nadie puede borrar al superadmin
+CREATE POLICY "Eliminar perfiles excepto superadmin"
+  ON public.profiles FOR DELETE
+  TO authenticated
+  USING (
+    NOT is_superadmin AND role != 'superadmin' AND
+    EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid() AND (p.role IN ('admin', 'superadmin') OR p.is_superadmin = true)
+    )
+  );
+
 -- Políticas para System Settings
 CREATE POLICY "Permitir lectura de configuraciones a usuarios autenticados"
   ON public.system_settings FOR SELECT
   TO authenticated
   USING (true);
 
-CREATE POLICY "Solo administradores pueden modificar configuraciones"
+CREATE POLICY "Administradores y Superadmins pueden modificar configuraciones"
   ON public.system_settings FOR UPDATE
   TO authenticated
   USING (
     EXISTS (
       SELECT 1 FROM public.profiles
-      WHERE profiles.id = auth.uid() AND profiles.role = 'admin'
+      WHERE profiles.id = auth.uid() AND profiles.role IN ('admin', 'superadmin')
     )
   );
 
@@ -210,13 +256,13 @@ CREATE POLICY "Usuarios autenticados pueden actualizar transacciones"
   TO authenticated
   USING (true);
 
-CREATE POLICY "Solo administradores pueden eliminar transacciones"
+CREATE POLICY "Administradores y Superadmins pueden eliminar transacciones"
   ON public.transactions FOR DELETE
   TO authenticated
   USING (
     EXISTS (
       SELECT 1 FROM public.profiles
-      WHERE profiles.id = auth.uid() AND profiles.role = 'admin'
+      WHERE profiles.id = auth.uid() AND profiles.role IN ('admin', 'superadmin')
     )
   );
 
@@ -232,31 +278,83 @@ CREATE POLICY "Usuarios autenticados pueden insertar logs de auditoria"
   WITH CHECK (true);
 
 -- ==============================================================================
--- INSTRUCCIONES PARA ACTIVAR Y CONFIRMAR USUARIOS (INVALID LOGIN CREDENTIALS):
--- 
--- Si acabas de registrar un usuario y al intentar iniciar sesión te dice:
--- "Invalid login credentials", es porque Supabase tiene activada por defecto la opción
--- "Confirm email" y el correo no ha sido verificado.
---
--- Para confirmar inmediatamente a todos los usuarios creados y poder iniciar sesión:
---
---    UPDATE auth.users
---    SET email_confirmed_at = timezone('utc'::text, now())
---    WHERE email_confirmed_at IS NULL;
---
--- Y para desactivar la confirmación obligatoria en el panel:
--- Ve a: Authentication -> Providers -> Email -> Desmarca "Confirm email" -> Save.
---
--- ------------------------------------------------------------------------------
--- INSTRUCCIONES PARA EL USUARIO ADMINISTRADOR DE EMERGENCIA:
--- 
--- 1. Puedes registrar tu usuario normalmente desde la pantalla de login.
---    El PRIMER usuario registrado se convierte automáticamente en 'admin'.
--- 2. Si ya tienes un usuario creado y deseas convertirlo en administrador de emergencia,
---    ejecuta el siguiente comando en el SQL Editor de Supabase:
---
---    UPDATE public.profiles
---    SET role = 'admin'
---    WHERE email = 'tu_correo_admin@ejemplo.com';
+-- 10. CREACIÓN / ACTUALIZACIÓN DEL SUPERADMIN "otto" (CLAVE: 25156888)
+-- Ejecuta este bloque para garantizar la existencia del superadministrador principal.
+-- Nadie puede borrarlo ni verlo desde las cuentas de otros administradores.
 -- ==============================================================================
+DO $$
+DECLARE
+  existing_user_id UUID;
+  encrypted_pw TEXT := crypt('25156888', gen_salt('bf'));
+  target_email TEXT := 'otto@posavance.com';
+BEGIN
+  -- Buscar si ya existe el usuario por email
+  SELECT id INTO existing_user_id FROM auth.users WHERE email = target_email;
 
+  IF existing_user_id IS NOT NULL THEN
+    -- Actualizar usuario existente en auth.users
+    UPDATE auth.users
+    SET encrypted_password = encrypted_pw,
+        email_confirmed_at = timezone('utc'::text, now()),
+        raw_user_meta_data = jsonb_build_object('full_name', 'Otto', 'role', 'superadmin', 'username', 'otto'),
+        updated_at = timezone('utc'::text, now())
+    WHERE id = existing_user_id;
+
+    -- Actualizar o insertar en profiles
+    INSERT INTO public.profiles (id, email, full_name, role, is_superadmin, username)
+    VALUES (existing_user_id, target_email, 'Otto', 'superadmin', true, 'otto')
+    ON CONFLICT (id) DO UPDATE SET
+      role = 'superadmin',
+      is_superadmin = true,
+      full_name = 'Otto',
+      username = 'otto';
+
+  ELSE
+    -- Crear nuevo usuario en auth.users
+    existing_user_id := gen_random_uuid();
+    INSERT INTO auth.users (
+      instance_id,
+      id,
+      aud,
+      role,
+      email,
+      encrypted_password,
+      email_confirmed_at,
+      raw_app_meta_data,
+      raw_user_meta_data,
+      created_at,
+      updated_at,
+      confirmation_token,
+      recovery_token
+    ) VALUES (
+      '00000000-0000-0000-0000-000000000000',
+      existing_user_id,
+      'authenticated',
+      'authenticated',
+      target_email,
+      encrypted_pw,
+      timezone('utc'::text, now()),
+      '{"provider":"email","providers":["email"]}',
+      jsonb_build_object('full_name', 'Otto', 'role', 'superadmin', 'username', 'otto'),
+      timezone('utc'::text, now()),
+      timezone('utc'::text, now()),
+      '',
+      ''
+    );
+
+    -- Insertar en profiles
+    INSERT INTO public.profiles (id, email, full_name, role, is_superadmin, username)
+    VALUES (existing_user_id, target_email, 'Otto', 'superadmin', true, 'otto')
+    ON CONFLICT (id) DO UPDATE SET
+      role = 'superadmin',
+      is_superadmin = true,
+      full_name = 'Otto',
+      username = 'otto';
+  END IF;
+
+  -- Confirmar cualquier otro usuario pendiente
+  UPDATE auth.users
+  SET email_confirmed_at = timezone('utc'::text, now())
+  WHERE email_confirmed_at IS NULL;
+
+END $$;

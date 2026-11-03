@@ -10,6 +10,7 @@ import {
   Settings,
   History,
   User,
+  Users,
   LogOut,
   Shield,
   Menu,
@@ -20,12 +21,13 @@ import {
 
 export function Navbar() {
   const pathname = usePathname();
-  const { user, profile, isAdmin, isConfigured, signOut } = useAuth();
+  const { user, profile, isAdmin, isSuperAdmin, isConfigured, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navLinks = [
     { href: '/dashboard', label: 'Operaciones', icon: CreditCard },
     { href: '/dashboard/nuevo', label: 'Nuevo Avance', icon: PlusCircle, highlight: true },
+    ...(isAdmin ? [{ href: '/dashboard/usuarios', label: 'Usuarios', icon: Users }] : []),
     { href: '/dashboard/configuracion', label: 'Comisiones', icon: Settings },
     { href: '/dashboard/auditoria', label: 'Auditoría', icon: History },
     { href: '/dashboard/perfil', label: 'Mi Perfil', icon: User },
@@ -108,10 +110,14 @@ export function Navbar() {
                 </span>
                 <span
                   className={`text-[10px] font-semibold uppercase tracking-wider ${
-                    isAdmin ? 'text-amber-600 dark:text-amber-400' : 'text-blue-600 dark:text-blue-400'
+                    isSuperAdmin
+                      ? 'text-purple-600 dark:text-purple-400'
+                      : isAdmin
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-blue-600 dark:text-blue-400'
                   }`}
                 >
-                  {isAdmin ? '🛡️ Admin' : 'Operador'}
+                  {isSuperAdmin ? '👑 Superadmin' : isAdmin ? '🛡️ Admin' : 'Operador'}
                 </span>
               </div>
             </Link>

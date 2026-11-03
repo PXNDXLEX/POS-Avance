@@ -10,29 +10,43 @@ interface AuthContextType {
   profile: Profile | null;
   role: UserRole;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   isLoading: boolean;
   isConfigured: boolean;
-  signIn: (email: string, password: string) => Promise<{ error?: string }>;
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error?: string }>;
+  signIn: (usernameOrEmail: string, password: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   updateProfileData: (fullName: string, newPassword?: string) => Promise<{ error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Perfiles para el modo demo local
 const DEMO_PROFILES: Record<string, Profile> = {
-  'admin@avancepos.com': {
-    id: 'demo-admin-id',
-    email: 'admin@avancepos.com',
-    full_name: 'Administrador Principal',
-    role: 'admin',
+  'otto@posavance.com': {
+    id: 'demo-superadmin-otto',
+    email: 'otto@posavance.com',
+    full_name: 'Otto',
+    role: 'superadmin',
+    is_superadmin: true,
+    username: 'otto',
     created_at: new Date().toISOString(),
   },
-  'operador@avancepos.com': {
+  'admin@posavance.com': {
+    id: 'demo-admin-id',
+    email: 'admin@posavance.com',
+    full_name: 'Administrador Secundario',
+    role: 'admin',
+    is_superadmin: false,
+    username: 'admin',
+    created_at: new Date().toISOString(),
+  },
+  'operador@posavance.com': {
     id: 'demo-operador-id',
-    email: 'operador@avancepos.com',
+    email: 'operador@posavance.com',
     full_name: 'Operador de Caja',
     role: 'operador',
+    is_superadmin: false,
+    username: 'operador',
     created_at: new Date().toISOString(),
   },
 };
@@ -41,6 +55,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Normalizar identificador: si entra "otto", lo convierte en "otto@posavance.com"
+  const resolveEmail = (identifier: string): string => {
+    const clean = identifier.trim().toLowerCase();
+    if (!clean.includes('@')) {
+      return `${clean}@posavance.com`;
+    }
+    return clean;
+  };
 
   // Cargar perfil desde Supabase
   const loadSupabaseProfile = async (userId: string, email: string) => {
@@ -59,12 +82,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (data) {
         return data as Profile;
       } else {
-        // Si no existe aún en profiles, crear uno básico
+        const isSuper = email.toLowerCase().startsWith('otto@');
         const fallback: Profile = {
           id: userId,
           email,
-          full_name: email.split('@')[0],
-          role: 'operador',
+          full_name: isSuper ? 'Otto' : email.split('@')[0],
+          role: isSuper ? 'superadmin' : 'operador',
+          is_superadmin: isSuper,
+          username: email.split('@')[0],
         };
         await supabase.from('profiles').insert(fallback);
         return fallback;
@@ -77,7 +102,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
-      // Modo Demo local con localStorage
       const savedDemoUser = localStorage.getItem('demo_pos_user');
       if (savedDemoUser) {
         try {
@@ -92,7 +116,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Inicializar sesión Supabase
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
@@ -121,19 +144,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const signIn = async (email: string, password: string): Promise<{ error?: string }> => {
+  const signIn = async (
+    usernameOrEmail: string,
+    password: string
+  ): Promise<{ error?: string }> => {
     setIsLoading(true);
     try {
+      const email = resolveEmail(usernameOrEmail);
+
       if (!isSupabaseConfigured || !supabase) {
-        // Login modo Demo
-        const normalized = email.toLowerCase().trim();
-        const demo = DEMO_PROFILES[normalized] || {
+        // En modo demo
+        const demo = DEMO_PROFILES[email] || {
           id: `demo-${Date.now()}`,
-          email: normalized,
-          full_name: normalized.includes('admin') ? 'Administrador' : 'Operador',
-          role: normalized.includes('admin') ? 'admin' : 'operador',
+          email,
+          full_name: email.split('@')[0],
+          role: email.startsWith('otto') ? 'superadmin' : 'operador',
+          is_superadmin: email.startsWith('otto'),
+          username: email.split('@')[0],
           created_at: new Date().toISOString(),
         };
+
         setUser({ id: demo.id, email: demo.email } as User);
         setProfile(demo);
         localStorage.setItem('demo_pos_user', JSON.stringify(demo));
@@ -141,9 +171,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return {};
       }
 
-      const normalizedEmail = email.trim().toLowerCase();
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: normalizedEmail,
+        email,
         password,
       });
 
@@ -155,7 +184,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ) {
           return {
             error:
-              'Credenciales inválidas o correo no confirmado en Supabase. Si te acabas de registrar, tu correo puede requerir confirmación en Supabase (desactiva "Confirm email" en Authentication -> Providers -> Email o confirma el usuario con el comando SQL).',
+              'Credenciales inválidas. Verifica tu usuario y contraseña. Recuerda ejecutar el script de creación del Superadmin "otto" en Supabase SQL Editor si aún no lo has hecho.',
           };
         }
         return { error: error.message };
@@ -172,69 +201,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err: unknown) {
       setIsLoading(false);
       const msg = err instanceof Error ? err.message : 'Error al iniciar sesión';
-      return { error: msg };
-    }
-  };
-
-  const signUp = async (
-    email: string,
-    password: string,
-    fullName: string
-  ): Promise<{ error?: string }> => {
-    setIsLoading(true);
-    try {
-      const normalized = email.toLowerCase().trim();
-
-      if (!isSupabaseConfigured || !supabase) {
-        const demo: Profile = {
-          id: `demo-${Date.now()}`,
-          email: normalized,
-          full_name: fullName.trim() || 'Usuario Demo',
-          role: normalized.includes('admin') ? 'admin' : 'operador',
-          created_at: new Date().toISOString(),
-        };
-        setUser({ id: demo.id, email: demo.email } as User);
-        setProfile(demo);
-        localStorage.setItem('demo_pos_user', JSON.stringify(demo));
-        setIsLoading(false);
-        return {};
-      }
-
-      const { data, error } = await supabase.auth.signUp({
-        email: normalized,
-        password,
-        options: {
-          data: {
-            full_name: fullName.trim(),
-          },
-        },
-      });
-
-      if (error) {
-        setIsLoading(false);
-        return { error: error.message };
-      }
-
-      // Si data.session es null, Supabase requiere confirmación por email
-      if (data.user && !data.session) {
-        setIsLoading(false);
-        return {
-          error:
-            'Usuario creado en Supabase, pero requiere confirmación de correo. Para acceder sin confirmar emails, ve a tu panel de Supabase: Authentication -> Providers -> Email y desactiva la opción "Confirm email".',
-        };
-      }
-
-      if (data.user && data.session) {
-        setUser(data.user);
-        const prof = await loadSupabaseProfile(data.user.id, data.user.email || '');
-        setProfile(prof);
-      }
-
-      setIsLoading(false);
-      return {};
-    } catch (err: unknown) {
-      setIsLoading(false);
-      const msg = err instanceof Error ? err.message : 'Error al registrarse';
       return { error: msg };
     }
   };
@@ -271,7 +237,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!user) return { error: 'No hay usuario autenticado.' };
 
-      // Actualizar nombre en tabla profiles
       const { error: profileError } = await supabase
         .from('profiles')
         .update({ full_name: fullName, updated_at: new Date().toISOString() })
@@ -279,7 +244,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (profileError) return { error: profileError.message };
 
-      // Actualizar password si se especificó
       if (newPassword && newPassword.trim().length >= 6) {
         const { error: passError } = await supabase.auth.updateUser({
           password: newPassword,
@@ -287,7 +251,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (passError) return { error: passError.message };
       }
 
-      setProfile(prev => (prev ? { ...prev, full_name: fullName } : null));
+      setProfile((prev) => (prev ? { ...prev, full_name: fullName } : null));
       return {};
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al actualizar perfil';
@@ -295,8 +259,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const role: UserRole = profile?.role || 'operador';
-  const isAdmin = role === 'admin';
+  const isSuperAdmin = profile?.role === 'superadmin' || profile?.is_superadmin === true;
+  const role: UserRole = isSuperAdmin ? 'superadmin' : profile?.role || 'operador';
+  const isAdmin = isSuperAdmin || role === 'admin';
 
   return (
     <AuthContext.Provider
@@ -305,10 +270,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         profile,
         role,
         isAdmin,
+        isSuperAdmin,
         isLoading,
         isConfigured: isSupabaseConfigured,
         signIn,
-        signUp,
         signOut,
         updateProfileData,
       }}
@@ -325,4 +290,3 @@ export function useAuth() {
   }
   return context;
 }
-

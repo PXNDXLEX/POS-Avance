@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export default function PerfilPage() {
-  const { user, profile, isAdmin, updateProfileData } = useAuth();
+  const { user, profile, isAdmin, isSuperAdmin, updateProfileData } = useAuth();
 
   const [fullName, setFullName] = useState(profile?.full_name || '');
   const [newPassword, setNewPassword] = useState('');
@@ -105,13 +105,15 @@ export default function PerfilPage() {
           <div className="mt-4">
             <span
               className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
-                isAdmin
+                isSuperAdmin
+                  ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-300'
+                  : isAdmin
                   ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
                   : 'bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
               }`}
             >
               <Shield className="w-3.5 h-3.5" />
-              <span>{isAdmin ? 'Administrador' : 'Operador'}</span>
+              <span>{isSuperAdmin ? '👑 Superadmin' : isAdmin ? '🛡️ Admin' : 'Operador'}</span>
             </span>
           </div>
 
@@ -228,22 +230,14 @@ export default function PerfilPage() {
         </div>
       </div>
 
-      {/* SECCIÓN USUARIO ADMINISTRADOR DE EMERGENCIA */}
-      <div className="bg-amber-500/10 dark:bg-amber-950/20 border border-amber-300 dark:border-amber-800/60 rounded-2xl p-6 space-y-3">
-        <div className="flex items-center gap-2.5 text-amber-900 dark:text-amber-200">
-          <Shield className="w-5 h-5 text-amber-600" />
-          <h3 className="font-bold text-base">Usuario Administrador de Emergencia</h3>
+      {/* SECCIÓN SUPERADMIN OTTO */}
+      <div className="bg-purple-500/10 dark:bg-purple-950/20 border border-purple-300 dark:border-purple-800/60 rounded-2xl p-6 space-y-3">
+        <div className="flex items-center gap-2.5 text-purple-900 dark:text-purple-200">
+          <Shield className="w-5 h-5 text-purple-600" />
+          <h3 className="font-bold text-base">Superadministrador Principal (otto)</h3>
         </div>
-        <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
-          En caso de emergencia o pérdida de acceso al administrador principal, cualquier usuario registrado en Supabase puede ser ascendido de forma directa ejecutando la siguiente consulta en el SQL Editor de su proyecto Supabase:
-        </p>
-
-        <div className="bg-gray-900 text-amber-400 p-3.5 rounded-xl font-mono text-xs overflow-x-auto border border-gray-800">
-          UPDATE public.profiles SET role = &apos;admin&apos; WHERE email = &apos;tu_correo@ejemplo.com&apos;;
-        </div>
-
-        <p className="text-[11px] text-amber-700 dark:text-amber-400">
-          * Los administradores tienen acceso completo para ajustar los porcentajes de comisión por defecto, ver el historial global de auditoría y eliminar registros si fuera necesario.
+        <p className="text-xs text-purple-800 dark:text-purple-300 leading-relaxed">
+          El usuario principal es <strong>otto</strong>. Nadie puede borrarlo ni verlo desde las cuentas de otros administradores. En caso de requerir restablecer sus credenciales (clave: <code>25156888</code>), ejecute el bloque #10 de <code>supabase_schema.sql</code> en el SQL Editor de Supabase.
         </p>
       </div>
     </div>

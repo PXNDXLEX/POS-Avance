@@ -102,19 +102,20 @@ Abre [http://localhost:3000](http://localhost:3000) en tu navegador.
 
 ---
 
-## 🛡️ Administrador de Emergencia
+## 👑 Superadministrador y Gestión de Usuarios
 
-El primer usuario que se registre en el sistema recibe automáticamente el rol de **`admin`**.
+El registro público de usuarios se encuentra **deshabilitado**. Todo el acceso se gestiona desde el interior del sistema:
 
-Si por algún motivo pierdes el acceso a tu usuario administrador o necesitas activar un usuario de emergencia inmediatamente:
+### 1. Credenciales del Superadministrador Principal:
+- **Usuario:** `otto` (o `otto@posavance.com`)
+- **Contraseña:** `25156888`
 
-1. Ve al **SQL Editor** en Supabase.
-2. Ejecuta la siguiente consulta sustituyendo el correo electrónico:
-   ```sql
-   UPDATE public.profiles
-   SET role = 'admin'
-   WHERE email = 'tu_correo_admin@ejemplo.com';
-   ```
+Este usuario se crea o restablece ejecutando el bloque **#10** de [`supabase_schema.sql`](./supabase_schema.sql) en el SQL Editor de Supabase.
+
+### 2. Jerarquía y Privilegios:
+- **Superadmin (`otto`):** Tiene control absoluto. **Nadie puede borrarlo ni verlo** en las listas de usuarios desde cuentas de otros administradores.
+- **Administrador (`admin`):** Puede crear y eliminar otros administradores y operadores desde la web en la sección **Usuarios**. No puede ver ni eliminar al Superadmin.
+- **Operador (`operador`):** Solo tiene acceso al registro de avances, cálculo de comisiones, marcado de transferencias y envío por WhatsApp. No tiene acceso a la gestión de usuarios ni configuraciones del sistema.
 
 ---
 
