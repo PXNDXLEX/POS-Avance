@@ -101,6 +101,7 @@ export default function UsuariosPage() {
         headers: {
           'x-is-superadmin': isSuperAdmin ? 'true' : 'false',
         },
+        cache: 'no-store',
       });
       const data = await res.json();
       if (data.users) {
@@ -581,3 +582,4 @@ export default function UsuariosPage() {
     </div>
   );
 }
+
