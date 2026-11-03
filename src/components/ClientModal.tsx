@@ -311,3 +311,4 @@ export function ClientModal({ client, onClose, onSuccess }: ClientModalProps) {
     </div>
   );
 }
+

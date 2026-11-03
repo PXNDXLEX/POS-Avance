@@ -77,19 +77,9 @@ export default function LoginPage() {
           )}
 
           {error && (
-            <div className="mb-5 p-3.5 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-xl text-xs text-red-700 dark:text-red-300 space-y-2">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{error}</span>
-              </div>
-              <div className="mt-2 p-2.5 bg-white dark:bg-gray-900 rounded-lg border border-red-200 dark:border-red-900 text-[11px] space-y-1.5">
-                <span className="font-bold block text-gray-800 dark:text-gray-200">
-                  💡 Crear / Restablecer Superadmin en Supabase:
-                </span>
-                <p className="text-gray-600 dark:text-gray-400">
-                  Ejecuta el bloque <strong>#10</strong> de <code>supabase_schema.sql</code> en el SQL Editor de Supabase para generar el usuario <strong>otto</strong>.
-                </p>
-              </div>
+            <div className="mb-5 p-3.5 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-xl text-xs text-red-700 dark:text-red-300 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{error}</span>
             </div>
           )}
 
@@ -105,7 +95,7 @@ export default function LoginPage() {
                   required
                   value={usernameOrEmail}
                   onChange={(e) => setUsernameOrEmail(e.target.value)}
-                  placeholder="ej: otto o pedroleon"
+                  placeholder="ej: usuario o admin"
                   className="w-full pl-10 pr-3 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white"
                 />
               </div>

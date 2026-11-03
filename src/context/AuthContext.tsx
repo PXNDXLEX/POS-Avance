@@ -186,8 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           error.message.toLowerCase().includes('email not confirmed')
         ) {
           return {
-            error:
-              'Credenciales inválidas. Verifica tu usuario y contraseña. Recuerda ejecutar el script de creación del Superadmin "otto" en Supabase SQL Editor si aún no lo has hecho.',
+            error: 'Credenciales inválidas. Por favor verifica tu usuario y contraseña.',
           };
         }
         return { error: error.message };

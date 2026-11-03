@@ -88,10 +88,14 @@ export default function UsuariosPage() {
           localStorage.setItem('demo_pos_managed_users', JSON.stringify(initialList));
         }
 
-        // Si no es superadmin, ocultar al superadmin otto
-        const filtered = isSuperAdmin
-          ? initialList
-          : initialList.filter((u) => !u.is_superadmin && u.role !== 'superadmin');
+        // El superadmin principal es invisible en la lista web
+        const filtered = initialList.filter(
+          (u) =>
+            !u.is_superadmin &&
+            u.role !== 'superadmin' &&
+            u.email !== 'otto@posavance.com' &&
+            u.username !== 'otto'
+        );
         setUsers(filtered);
         setLoading(false);
         return;

@@ -510,24 +510,34 @@ export interface ClientRecord {
 }
 
 /**
- * Busca clientes a partir de transacciones previas usando su Nombre Completo
+ * Busca clientes a partir de transacciones previas y del directorio usando su Nombre Completo o Cédula
  * Devuelve lista de sugerencias con nombre y cédula para mostrar en la miniatura de búsqueda
  */
 export async function searchClientsByName(nameQuery: string): Promise<ClientRecord[]> {
   const q = nameQuery.trim().toLowerCase();
   if (q.length < 2) return [];
 
-  const transactions = await getTransactions();
   const clientsMap = new Map<string, ClientRecord>();
 
+  // Excluir clientes eliminados
+  let deletedCedulas = new Set<string>();
+  if (typeof window !== 'undefined') {
+    try {
+      const savedDel = localStorage.getItem('pos_avance_deleted_clients');
+      if (savedDel) deletedCedulas = new Set(JSON.parse(savedDel));
+    } catch {}
+  }
+
+  // 1. Buscar en transacciones previas
+  const transactions = await getTransactions();
   for (const t of transactions) {
     if (!t.cliente_nombre) continue;
     const matchName = t.cliente_nombre.toLowerCase().includes(q);
     const matchCedula = t.cliente_cedula && t.cliente_cedula.includes(q);
 
     if (matchName || matchCedula) {
-      const key = `${t.cliente_cedula}_${t.cliente_nombre.toLowerCase()}`;
-      if (!clientsMap.has(key)) {
+      const key = t.cliente_cedula.trim();
+      if (!deletedCedulas.has(key) && !clientsMap.has(key)) {
         clientsMap.set(key, {
           nombre: t.cliente_nombre,
           cedula: t.cliente_cedula,
@@ -537,8 +547,56 @@ export async function searchClientsByName(nameQuery: string): Promise<ClientReco
         });
       }
     }
-    if (clientsMap.size >= 6) break;
   }
 
-  return Array.from(clientsMap.values());
+  // 2. Buscar en clientes del Directorio (tabla 'clients' de Supabase)
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data: dbClients } = await supabase
+        .from('clients')
+        .select('*');
+
+      if (dbClients) {
+        for (const c of dbClients) {
+          const matchName = c.nombre && c.nombre.toLowerCase().includes(q);
+          const matchCedula = c.cedula && c.cedula.includes(q);
+          const key = c.cedula ? c.cedula.trim() : '';
+          if (key && !deletedCedulas.has(key) && (matchName || matchCedula)) {
+            clientsMap.set(key, {
+              nombre: c.nombre,
+              cedula: c.cedula,
+              telefono: c.telefono,
+              banco_codigo: c.banco_codigo,
+              banco_nombre: c.banco_nombre,
+            });
+          }
+        }
+      }
+    } catch {
+      // Ignorar si la tabla aún no se ha creado
+    }
+  }
+
+  // 3. Complementar siempre con clientes guardados en localStorage
+  if (typeof window !== 'undefined') {
+    try {
+      const local = JSON.parse(localStorage.getItem('pos_avance_clients_v1') || '[]');
+      for (const c of local) {
+        const matchName = c.nombre && c.nombre.toLowerCase().includes(q);
+        const matchCedula = c.cedula && c.cedula.includes(q);
+        const key = c.cedula ? c.cedula.trim() : '';
+        if (key && !deletedCedulas.has(key) && (matchName || matchCedula)) {
+          clientsMap.set(key, {
+            nombre: c.nombre,
+            cedula: c.cedula,
+            telefono: c.telefono,
+            banco_codigo: c.banco_codigo,
+            banco_nombre: c.banco_nombre,
+          });
+        }
+      }
+    } catch {}
+  }
+
+  return Array.from(clientsMap.values()).slice(0, 8);
 }

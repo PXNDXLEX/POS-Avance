@@ -45,10 +45,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    // Regla de seguridad: Si no es superadmin, ocultar al superadmin otto
+    // Regla de seguridad: El superadmin principal es invisible en la lista web
     const filtered = (data || []).filter((p: any) => {
-      if (isSuperAdmin) return true;
-      return !p.is_superadmin && p.role !== 'superadmin' && p.email !== 'otto@posavance.com';
+      return (
+        !p.is_superadmin &&
+        p.role !== 'superadmin' &&
+        p.email !== 'otto@posavance.com' &&
+        p.username !== 'otto'
+      );
     });
 
     return NextResponse.json({ users: filtered });

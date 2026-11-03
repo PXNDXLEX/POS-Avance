@@ -233,17 +233,6 @@ export default function PerfilPage() {
           </form>
         </div>
       </div>
-
-      {/* SECCIÓN SUPERADMIN OTTO */}
-      <div className="bg-purple-500/10 dark:bg-purple-950/20 border border-purple-300 dark:border-purple-800/60 rounded-2xl p-6 space-y-3">
-        <div className="flex items-center gap-2.5 text-purple-900 dark:text-purple-200">
-          <Shield className="w-5 h-5 text-purple-600" />
-          <h3 className="font-bold text-base">Superadministrador Principal (otto)</h3>
-        </div>
-        <p className="text-xs text-purple-800 dark:text-purple-300 leading-relaxed">
-          El usuario principal es <strong>otto</strong>. Nadie puede borrarlo ni verlo desde las cuentas de otros administradores. En caso de requerir restablecer sus credenciales de acceso, ejecute el bloque #10 de <code>supabase_schema.sql</code> en el SQL Editor de Supabase.
-        </p>
-      </div>
     </div>
   );
 }
