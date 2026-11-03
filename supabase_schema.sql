@@ -425,3 +425,40 @@ ON CONFLICT (id) DO UPDATE SET
   is_superadmin = true,
   full_name = 'Otto',
   username = 'otto';
+
+-- ==============================================================================
+-- 11. TABLA DE DIRECTORIO DE CLIENTES (Clients) Y AUDITORÍA INMUTABLE
+-- ==============================================================================
+-- Permitir que audit_logs conserve registros de transacciones eliminadas
+ALTER TABLE IF EXISTS public.audit_logs ALTER COLUMN transaction_id DROP NOT NULL;
+
+CREATE TABLE IF NOT EXISTS public.clients (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nombre TEXT NOT NULL,
+  cedula VARCHAR(20) NOT NULL UNIQUE,
+  telefono VARCHAR(15) NOT NULL,
+  banco_codigo VARCHAR(10) NOT NULL,
+  banco_nombre TEXT NOT NULL,
+  notas TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Usuarios autenticados pueden ver clientes" ON public.clients;
+CREATE POLICY "Usuarios autenticados pueden ver clientes"
+  ON public.clients FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Usuarios autenticados pueden insertar clientes" ON public.clients;
+CREATE POLICY "Usuarios autenticados pueden insertar clientes"
+  ON public.clients FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Usuarios autenticados pueden modificar clientes" ON public.clients;
+CREATE POLICY "Usuarios autenticados pueden modificar clientes"
+  ON public.clients FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Usuarios autenticados pueden borrar clientes" ON public.clients;
+CREATE POLICY "Usuarios autenticados pueden borrar clientes"
+  ON public.clients FOR DELETE TO authenticated USING (true);
+

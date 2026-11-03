@@ -13,6 +13,8 @@ import {
   Search,
   Loader2,
   AlertCircle,
+  Trash2,
+  Edit3,
 } from 'lucide-react';
 
 export default function AuditoriaPage() {
@@ -88,6 +90,16 @@ export default function AuditoriaPage() {
           >
             Nuevos Avances
           </button>
+          <button
+            onClick={() => setFilterAction('eliminacion')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              filterAction === 'eliminacion'
+                ? 'bg-red-600 text-white'
+                : 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40'
+            }`}
+          >
+            Eliminados
+          </button>
         </div>
 
         <div className="relative">
@@ -118,6 +130,8 @@ export default function AuditoriaPage() {
           <div className="divide-y divide-gray-100 dark:divide-gray-800">
             {filteredLogs.map((log) => {
               const isPaid = log.accion === 'marcado_pagado';
+              const isDelete = log.accion === 'eliminacion';
+              const isEdit = log.accion === 'modificacion';
               const dateStr = new Date(log.created_at).toLocaleString('es-VE', {
                 day: '2-digit',
                 month: '2-digit',
@@ -132,17 +146,41 @@ export default function AuditoriaPage() {
                   <div className="flex items-start gap-3.5">
                     <div
                       className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-white shadow-xs ${
-                        isPaid ? 'bg-emerald-600' : 'bg-blue-600'
+                        isDelete
+                          ? 'bg-red-600'
+                          : isPaid
+                          ? 'bg-emerald-600'
+                          : isEdit
+                          ? 'bg-amber-600'
+                          : 'bg-blue-600'
                       }`}
                     >
-                      {isPaid ? <CheckCircle2 className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
+                      {isDelete ? (
+                        <Trash2 className="w-5 h-5" />
+                      ) : isPaid ? (
+                        <CheckCircle2 className="w-5 h-5" />
+                      ) : isEdit ? (
+                        <Edit3 className="w-5 h-5" />
+                      ) : (
+                        <FileText className="w-5 h-5" />
+                      )}
                     </div>
 
                     <div className="flex-1 min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-bold text-sm text-gray-900 dark:text-white capitalize">
-                          {log.accion.replace('_', ' ')}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`font-bold text-xs uppercase px-2 py-0.5 rounded-md ${
+                              isDelete
+                                ? 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300'
+                                : isPaid
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                : 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
+                            }`}
+                          >
+                            {log.accion.replace('_', ' ')}
+                          </span>
+                        </div>
                         <span className="text-xs font-mono text-gray-400 flex items-center gap-1">
                           <Clock className="w-3 h-3" />
                           {dateStr}

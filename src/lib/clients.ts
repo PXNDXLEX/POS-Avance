@@ -1,0 +1,281 @@
+import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
+import { Client, Transaction } from '@/lib/types';
+import { getTransactions, addAuditLog } from '@/lib/transactions';
+
+const LOCAL_STORAGE_CLIENTS_KEY = 'pos_avance_clients_v1';
+
+/**
+ * Obtiene la lista completa de clientes del directorio.
+ * Agrega clientes registrados en la tabla 'clients' y consolida con transacciones existentes.
+ */
+export async function getClients(): Promise<Client[]> {
+  const transactions = await getTransactions();
+
+  // Calcular totales por cédula a partir de las transacciones
+  const txStats = new Map<string, { total_operaciones: number; total_monto: number; last_op?: string }>();
+  for (const t of transactions) {
+    if (!t.cliente_cedula) continue;
+    const cleanCedula = t.cliente_cedula.trim();
+    const current = txStats.get(cleanCedula) || { total_operaciones: 0, total_monto: 0 };
+    current.total_operaciones += 1;
+    current.total_monto += Number(t.monto_bruto || 0);
+    if (!current.last_op || new Date(t.fecha_operacion) > new Date(current.last_op)) {
+      current.last_op = t.fecha_operacion;
+    }
+    txStats.set(cleanCedula, current);
+  }
+
+  if (!isSupabaseConfigured || !supabase) {
+    // Modo Local
+    const saved = localStorage.getItem(LOCAL_STORAGE_CLIENTS_KEY);
+    let clientsList: Client[] = [];
+    if (saved) {
+      try {
+        clientsList = JSON.parse(saved);
+      } catch {
+        clientsList = [];
+      }
+    }
+
+    // Consolidar clientes de transacciones que no estén en clientsList
+    const cedulasEnLista = new Set(clientsList.map((c) => c.cedula));
+    for (const t of transactions) {
+      if (t.cliente_cedula && !cedulasEnLista.has(t.cliente_cedula)) {
+        clientsList.push({
+          id: `client-${t.cliente_cedula}`,
+          nombre: t.cliente_nombre,
+          cedula: t.cliente_cedula,
+          telefono: t.cliente_telefono,
+          banco_codigo: t.cliente_banco_codigo,
+          banco_nombre: t.cliente_banco_nombre,
+          created_at: t.fecha_operacion,
+        });
+        cedulasEnLista.add(t.cliente_cedula);
+      }
+    }
+
+    return clientsList.map((c) => {
+      const stats = txStats.get(c.cedula) || { total_operaciones: 0, total_monto: 0 };
+      return {
+        ...c,
+        total_operaciones: stats.total_operaciones,
+        total_monto: stats.total_monto,
+      };
+    });
+  }
+
+  try {
+    // Intentar leer tabla public.clients
+    const { data: dbClients, error } = await supabase
+      .from('clients')
+      .select('*')
+      .order('nombre', { ascending: true });
+
+    let finalClients: Client[] = [];
+
+    if (!error && dbClients && dbClients.length > 0) {
+      finalClients = dbClients as Client[];
+    } else {
+      // Si la tabla clients está vacía o aún no se ha creado, consolidamos desde transactions
+      const uniqueClients = new Map<string, Client>();
+      for (const t of transactions) {
+        if (!t.cliente_cedula) continue;
+        const key = t.cliente_cedula.trim();
+        if (!uniqueClients.has(key)) {
+          uniqueClients.set(key, {
+            id: `client-${key}`,
+            nombre: t.cliente_nombre,
+            cedula: key,
+            telefono: t.cliente_telefono,
+            banco_codigo: t.cliente_banco_codigo,
+            banco_nombre: t.cliente_banco_nombre,
+            created_at: t.fecha_operacion,
+          });
+        }
+      }
+      finalClients = Array.from(uniqueClients.values());
+    }
+
+    // Asignar estadísticas
+    return finalClients.map((c) => {
+      const stats = txStats.get(c.cedula) || { total_operaciones: 0, total_monto: 0 };
+      return {
+        ...c,
+        total_operaciones: stats.total_operaciones,
+        total_monto: stats.total_monto,
+      };
+    });
+  } catch (err) {
+    console.warn('Aviso al obtener clientes:', err);
+    return [];
+  }
+}
+
+/**
+ * Guarda o actualiza un cliente en el directorio
+ */
+export async function saveClient(
+  clientData: Omit<Client, 'id' | 'created_at' | 'updated_at'>,
+  existingId?: string,
+  oldCedula?: string,
+  userId?: string,
+  userFullName?: string
+): Promise<{ data?: Client; error?: string }> {
+  const now = new Date().toISOString();
+  const cleanCedula = clientData.cedula.replace(/\D/g, '').trim();
+  const cleanPhone = clientData.telefono.replace(/\D/g, '').trim();
+
+  const payload = {
+    nombre: clientData.nombre.trim(),
+    cedula: cleanCedula,
+    telefono: cleanPhone,
+    banco_codigo: clientData.banco_codigo,
+    banco_nombre: clientData.banco_nombre,
+    notas: clientData.notas?.trim() || null,
+    updated_at: now,
+  };
+
+  if (!isSupabaseConfigured || !supabase) {
+    const clients = await getClients();
+    let updated: Client[];
+    const isEdit = Boolean(existingId || oldCedula);
+
+    if (isEdit) {
+      updated = clients.map((c) =>
+        c.id === existingId || c.cedula === oldCedula
+          ? { ...c, ...payload }
+          : c
+      );
+    } else {
+      const newClient: Client = {
+        ...payload,
+        id: `client-${cleanCedula}-${Date.now()}`,
+        created_at: now,
+      };
+      updated = [newClient, ...clients];
+    }
+
+    localStorage.setItem(LOCAL_STORAGE_CLIENTS_KEY, JSON.stringify(updated));
+
+    // Si editó la cédula o datos, sincronizar transacciones en local
+    if (oldCedula) {
+      const allTxs = await getTransactions();
+      const updatedTxs = allTxs.map((t) =>
+        t.cliente_cedula === oldCedula
+          ? {
+              ...t,
+              cliente_nombre: payload.nombre,
+              cliente_cedula: payload.cedula,
+              cliente_telefono: payload.telefono,
+              cliente_banco_codigo: payload.banco_codigo,
+              cliente_banco_nombre: payload.banco_nombre,
+            }
+          : t
+      );
+      localStorage.setItem('pos_avance_transactions_v1', JSON.stringify(updatedTxs));
+    }
+
+    addAuditLog({
+      accion: isEdit ? 'modificacion' : 'creacion',
+      detalles: `Directorio: Cliente ${payload.nombre} (V-${payload.cedula}) ${isEdit ? 'actualizado' : 'registrado'} por ${userFullName || 'Administrador'}`,
+      usuario_id: userId,
+      usuario_nombre: userFullName,
+    }).catch(() => {});
+
+    return { data: { ...payload, id: existingId || `client-${cleanCedula}` } };
+  }
+
+  try {
+    const isEdit = Boolean(existingId || oldCedula);
+
+    // Intentar upsert o update en tabla clients
+    const { data, error } = await supabase
+      .from('clients')
+      .upsert({
+        id: existingId || undefined,
+        ...payload,
+      })
+      .select();
+
+    if (error && !error.message.includes('does not exist')) {
+      console.error('Error al guardar cliente en Supabase:', error);
+      return { error: error.message };
+    }
+
+    // Si editamos y hay cédula previa, sincronizar transacciones existentes
+    if (oldCedula) {
+      await supabase
+        .from('transactions')
+        .update({
+          cliente_nombre: payload.nombre,
+          cliente_cedula: payload.cedula,
+          cliente_telefono: payload.telefono,
+          cliente_banco_codigo: payload.banco_codigo,
+          cliente_banco_nombre: payload.banco_nombre,
+        })
+        .eq('cliente_cedula', oldCedula);
+    }
+
+    // Auditoría
+    addAuditLog({
+      accion: isEdit ? 'modificacion' : 'creacion',
+      detalles: `Directorio: Cliente ${payload.nombre} (V-${payload.cedula}) ${isEdit ? 'actualizado' : 'registrado'} por ${userFullName || 'Administrador'}`,
+      usuario_id: userId,
+      usuario_nombre: userFullName,
+    }).catch(() => {});
+
+    const saved = data && data[0] ? (data[0] as Client) : { ...payload, id: existingId || `client-${cleanCedula}` };
+    return { data: saved };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error al guardar cliente';
+    return { error: msg };
+  }
+}
+
+/**
+ * Elimina un cliente del directorio
+ */
+export async function deleteClient(
+  cedula: string,
+  nombre: string,
+  userId?: string,
+  userFullName?: string
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured || !supabase) {
+    const clients = await getClients();
+    const updated = clients.filter((c) => c.cedula !== cedula);
+    localStorage.setItem(LOCAL_STORAGE_CLIENTS_KEY, JSON.stringify(updated));
+
+    addAuditLog({
+      accion: 'eliminacion',
+      detalles: `Directorio: Cliente ${nombre} (V-${cedula}) eliminado del directorio por ${userFullName || 'Administrador'}`,
+      usuario_id: userId,
+      usuario_nombre: userFullName,
+    }).catch(() => {});
+
+    return {};
+  }
+
+  try {
+    const { error } = await supabase
+      .from('clients')
+      .delete()
+      .eq('cedula', cedula);
+
+    if (error && !error.message.includes('does not exist')) {
+      return { error: error.message };
+    }
+
+    addAuditLog({
+      accion: 'eliminacion',
+      detalles: `Directorio: Cliente ${nombre} (V-${cedula}) eliminado del directorio por ${userFullName || 'Administrador'}`,
+      usuario_id: userId,
+      usuario_nombre: userFullName,
+    }).catch(() => {});
+
+    return {};
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error al eliminar cliente';
+    return { error: msg };
+  }
+}

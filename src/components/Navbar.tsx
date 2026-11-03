@@ -17,6 +17,7 @@ import {
   X,
   Database,
   ExternalLink,
+  BookUser,
 } from 'lucide-react';
 
 export function Navbar() {
@@ -27,6 +28,7 @@ export function Navbar() {
   const navLinks = [
     { href: '/dashboard', label: 'Operaciones', icon: CreditCard },
     { href: '/dashboard/nuevo', label: 'Nuevo Avance', icon: PlusCircle, highlight: true },
+    { href: '/dashboard/directorio', label: 'Directorio', icon: BookUser },
     ...(isAdmin ? [{ href: '/dashboard/usuarios', label: 'Usuarios', icon: Users }] : []),
     { href: '/dashboard/configuracion', label: 'Comisiones', icon: Settings },
     { href: '/dashboard/auditoria', label: 'Auditoría', icon: History },

@@ -57,11 +57,11 @@ export type AuditAction =
 
 export interface AuditLog {
   id: string;
-  transaction_id: string;
+  transaction_id?: string | null;
   accion: AuditAction;
   detalles: string;
-  usuario_id?: string;
-  usuario_nombre?: string;
+  usuario_id?: string | null;
+  usuario_nombre?: string | null;
   created_at: string;
 }
 
@@ -69,4 +69,18 @@ export interface Bank {
   code: string;
   name: string;
   shortName: string;
+}
+
+export interface Client {
+  id: string;
+  nombre: string;
+  cedula: string;
+  telefono: string;
+  banco_codigo: string;
+  banco_nombre: string;
+  notas?: string | null;
+  total_operaciones?: number;
+  total_monto?: number;
+  created_at?: string;
+  updated_at?: string;
 }

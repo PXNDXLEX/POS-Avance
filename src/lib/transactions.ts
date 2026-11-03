@@ -232,6 +232,27 @@ export async function createTransaction(
       updated_at: new Date().toISOString(),
     };
 
+    // Registrar o actualizar automáticamente el cliente en el directorio
+    (async () => {
+      try {
+        await supabase
+          .from('clients')
+          .upsert(
+            {
+              nombre: payload.cliente_nombre.trim(),
+              cedula: payload.cliente_cedula.trim(),
+              telefono: payload.cliente_telefono.trim(),
+              banco_codigo: payload.cliente_banco_codigo,
+              banco_nombre: payload.cliente_banco_nombre,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'cedula' }
+          );
+      } catch {
+        // Ignorar si la tabla aún no existe
+      }
+    })();
+
     // Auditoría no bloqueante
     addAuditLog({
       transaction_id: savedTx.id,
@@ -318,32 +339,42 @@ export async function markAsPaid(
 
 /**
  * Elimina una transacción (Acceso exclusivo para Admin y Superadmin)
+ * Registra inmutablemente el evento en la auditoría con los detalles del cliente y monto eliminado.
  */
 export async function deleteTransaction(
   id: string,
   userId?: string,
   userFullName?: string
 ): Promise<{ error?: string }> {
+  // 1. Obtener la transacción antes de eliminarla para guardar sus datos en la auditoría
+  const allTxs = await getTransactions();
+  const targetTx = allTxs.find((t) => t.id === id);
+  const infoCliente = targetTx
+    ? `${targetTx.cliente_nombre} (V-${targetTx.cliente_cedula}) por Bs. ${targetTx.monto_bruto} [Neto a pagar: Bs. ${targetTx.monto_neto}, Banco: ${targetTx.cliente_banco_nombre}]`
+    : `ID: ${id}`;
+
   if (!isSupabaseConfigured || !supabase) {
-    const current = await getTransactions();
-    const updated = current.filter((t) => t.id !== id);
+    const updated = allTxs.filter((t) => t.id !== id);
     localStorage.setItem(LOCAL_STORAGE_TX_KEY, JSON.stringify(updated));
 
     addAuditLog({
-      transaction_id: id,
       accion: 'eliminacion',
-      detalles: `Operación eliminada por ${userFullName || 'Administrador'}`,
+      detalles: `Operación eliminada: Avance de ${infoCliente}`,
       usuario_id: isValidUuid(userId) ? userId : undefined,
-      usuario_nombre: userFullName,
+      usuario_nombre: userFullName || 'Administrador',
     }).catch(() => {});
 
     return {};
   }
 
   try {
-    // Eliminar logs de auditoría asociados para garantizar integridad referencial
-    await supabase.from('audit_logs').delete().eq('transaction_id', id);
+    // 2. Desvincular el ID de la transacción en los logs anteriores para que no se borren en cascada
+    await supabase
+      .from('audit_logs')
+      .update({ transaction_id: null })
+      .eq('transaction_id', id);
 
+    // 3. Eliminar la transacción de la tabla
     const { error } = await supabase
       .from('transactions')
       .delete()
@@ -353,6 +384,14 @@ export async function deleteTransaction(
       console.error('Error al eliminar transacción en Supabase:', error);
       return { error: error.message };
     }
+
+    // 4. Registrar en la auditoría permanente que la operación fue eliminada
+    await addAuditLog({
+      accion: 'eliminacion',
+      detalles: `Operación eliminada: Avance de ${infoCliente}`,
+      usuario_id: isValidUuid(userId) ? userId : undefined,
+      usuario_nombre: userFullName || 'Administrador',
+    });
 
     return {};
   } catch (err: unknown) {
@@ -421,7 +460,7 @@ export async function addAuditLog(
 
   try {
     await supabase.from('audit_logs').insert({
-      transaction_id: log.transaction_id,
+      transaction_id: isValidUuid(log.transaction_id) ? log.transaction_id : null,
       accion: log.accion,
       detalles: log.detalles,
       usuario_id: isValidUuid(log.usuario_id) ? log.usuario_id : null,

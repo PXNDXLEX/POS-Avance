@@ -44,34 +44,19 @@ export function generatePagoMovilClipboardText(tx: Pick<Transaction, 'cliente_ba
 
 /**
  * Genera el mensaje para enviar por WhatsApp al cliente informando del pago realizado.
+ * Formato amigable y directo solicitado por el usuario:
+ * "Hola! Tu avance de efectivo fue realizado correctamente por Bs. X al banco Y. Ref: Z"
  */
 export function generateWhatsAppMessage(
-  tx: Transaction,
-  businessName = 'Servicio de Avance'
+  tx: Transaction
 ): string {
   const montoFormateado = formatCurrencyVE(tx.monto_neto);
-  const fecha = tx.fecha_pago 
-    ? new Date(tx.fecha_pago).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })
-    : new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
-  let msg = `*${businessName}* - Comprobante de Pago\n\n`;
-  msg += `Hola *${tx.cliente_nombre.trim()}*, le informamos que su avance de efectivo ha sido transferido exitosamente.\n\n`;
-  msg += `📌 *Detalles de la Transferencia:*\n`;
-  msg += `• *Monto transferido:* ${montoFormateado}\n`;
-  msg += `• *Banco destino:* ${tx.cliente_banco_nombre} (${tx.cliente_banco_codigo})\n`;
-  msg += `• *Cédula:* ${tx.cliente_cedula}\n`;
-  msg += `• *Teléfono Pago Móvil:* ${tx.cliente_telefono}\n`;
-  msg += `• *Fecha:* ${fecha}\n`;
+  let msg = `Hola! Tu avance de efectivo fue realizado correctamente por ${montoFormateado} al banco ${tx.cliente_banco_nombre}.`;
 
   if (tx.referencia_pago) {
-    msg += `• *Nro. de Referencia:* ${tx.referencia_pago}\n`;
+    msg += `\nReferencia: ${tx.referencia_pago}`;
   }
 
-  if (tx.comprobante_url) {
-    msg += `\n📎 *Ver Comprobante digital:* ${tx.comprobante_url}\n`;
-  }
-
-  msg += `\n¡Gracias por su confianza!`;
   return msg;
 }
 
