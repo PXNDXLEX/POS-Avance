@@ -84,8 +84,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const cleanUsername = username.trim().toLowerCase();
-    const email = cleanUsername.includes('@') ? cleanUsername : `${cleanUsername}@posavance.com`;
+    const cleanUsername = username.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+    if (!cleanUsername) {
+      return NextResponse.json(
+        { error: 'El nombre de usuario contiene caracteres no permitidos. Use solo letras, números y guiones.' },
+        { status: 400 }
+      );
+    }
+
+    // Mapeo interno: otto usa su cuenta existente, nuevos usuarios usan un dominio estándar válido para Supabase
+    const email = cleanUsername === 'otto' ? 'otto@posavance.com' : `${cleanUsername}.posavance@gmail.com`;
 
     const adminClient = getAdminClient();
 

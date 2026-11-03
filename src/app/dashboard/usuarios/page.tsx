@@ -217,7 +217,7 @@ export default function UsuariosPage() {
     }
 
     const confirm = window.confirm(
-      `¿Estás seguro de que deseas eliminar permanentemente al usuario "${userToDelete.full_name}" (${userToDelete.email})?`
+      `¿Estás seguro de que deseas eliminar permanentemente al usuario "${userToDelete.full_name}" (@${userToDelete.username || 'usuario'})?`
     );
     if (!confirm) return;
 
@@ -321,7 +321,7 @@ export default function UsuariosPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nombre, usuario o correo..."
+            placeholder="Buscar por nombre o usuario..."
             className="w-full pl-9 pr-3 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white"
           />
         </div>
@@ -385,11 +385,9 @@ export default function UsuariosPage() {
                       </div>
 
                       <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
-                        <span className="font-mono text-gray-600 dark:text-gray-300">
-                          @{u.username || u.email.split('@')[0]}
+                        <span className="font-mono font-bold text-gray-600 dark:text-gray-300">
+                          @{u.username || u.email?.split('@')[0]}
                         </span>
-                        <span>•</span>
-                        <span>{u.email}</span>
                       </div>
                     </div>
                   </div>

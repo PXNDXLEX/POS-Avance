@@ -100,7 +100,9 @@ export default function PerfilPage() {
           <h3 className="font-bold text-lg text-gray-900 dark:text-white">
             {profile?.full_name || 'Usuario'}
           </h3>
-          <p className="text-xs text-gray-400 mt-0.5">{profile?.email || user?.email}</p>
+          <p className="text-xs font-mono text-gray-400 mt-0.5">
+            @{profile?.username || (profile?.email ? profile.email.split('@')[0] : 'usuario')}
+          </p>
 
           <div className="mt-4">
             <span
@@ -141,18 +143,20 @@ export default function PerfilPage() {
           </h3>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Correo Electrónico (Solo Lectura) */}
+            {/* Usuario de Acceso (Solo Lectura) */}
             <div>
               <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">
-                Correo Electrónico (No editable)
+                Usuario de Acceso (No editable)
               </label>
               <div className="relative">
-                <Mail className="absolute left-3.5 top-3 w-4 h-4 text-gray-400" />
+                <span className="absolute left-3.5 top-2.5 font-bold text-sm text-gray-400">
+                  @
+                </span>
                 <input
-                  type="email"
+                  type="text"
                   disabled
-                  value={profile?.email || user?.email || ''}
-                  className="w-full pl-10 pr-3 py-2.5 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-500 cursor-not-allowed"
+                  value={profile?.username || (profile?.email ? profile.email.split('@')[0] : 'usuario')}
+                  className="w-full pl-9 pr-3 py-2.5 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-mono font-bold text-gray-700 dark:text-gray-300 cursor-not-allowed"
                 />
               </div>
             </div>

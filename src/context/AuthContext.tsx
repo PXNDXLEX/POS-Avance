@@ -56,13 +56,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Normalizar identificador: si entra "otto", lo convierte en "otto@posavance.com"
+  // Normalizar identificador a email interno para Supabase Auth
   const resolveEmail = (identifier: string): string => {
-    const clean = identifier.trim().toLowerCase();
-    if (!clean.includes('@')) {
-      return `${clean}@posavance.com`;
+    const clean = identifier.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+    if (clean === 'otto' || clean === 'otto@posavance.com') {
+      return 'otto@posavance.com';
     }
-    return clean;
+    if (clean.includes('@')) {
+      return clean;
+    }
+    return `${clean}.posavance@gmail.com`;
   };
 
   // Cargar perfil desde Supabase
