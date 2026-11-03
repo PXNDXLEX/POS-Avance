@@ -118,19 +118,10 @@ ON storage.objects FOR UPDATE
 TO authenticated
 USING (bucket_id = 'comprobantes');
 
--- 7. TRIGGER PARA CREACIÓN AUTOMÁTICA DE PERFILES Y AUTO-CONFIRMACIÓN
-CREATE OR REPLACE FUNCTION public.auto_confirm_new_user()
-RETURNS trigger AS $$
-BEGIN
-  new.email_confirmed_at = COALESCE(new.email_confirmed_at, timezone('utc'::text, now()));
-  RETURN new;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
+-- 7. TRIGGER PARA CREACIÓN AUTOMÁTICA DE PERFILES
+-- Si existía el trigger experimental de auto-confirmar, removerlo para no interferir con GoTrue
 DROP TRIGGER IF EXISTS on_auth_user_auto_confirm ON auth.users;
-CREATE TRIGGER on_auth_user_auto_confirm
-  BEFORE INSERT ON auth.users
-  FOR EACH ROW EXECUTE PROCEDURE public.auto_confirm_new_user();
+DROP FUNCTION IF EXISTS public.auto_confirm_new_user();
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
@@ -278,83 +269,117 @@ CREATE POLICY "Usuarios autenticados pueden insertar logs de auditoria"
   WITH CHECK (true);
 
 -- ==============================================================================
--- 10. CREACIÓN / ACTUALIZACIÓN DEL SUPERADMIN "otto" (CLAVE: 25156888)
--- Ejecuta este bloque para garantizar la existencia del superadministrador principal.
--- Nadie puede borrarlo ni verlo desde las cuentas de otros administradores.
+-- 10. REPARACIÓN Y CREACIÓN DEL SUPERADMIN "otto" (CLAVE: 25156888)
 -- ==============================================================================
-DO $$
-DECLARE
-  existing_user_id UUID;
-  encrypted_pw TEXT := crypt('25156888', gen_salt('bf'));
-  target_email TEXT := 'otto@posavance.com';
-BEGIN
-  -- Buscar si ya existe el usuario por email
-  SELECT id INTO existing_user_id FROM auth.users WHERE email = target_email;
+-- 1. Eliminar cualquier trigger manual sobre auth.users para evitar conflictos con GoTrue
+DROP TRIGGER IF EXISTS on_auth_user_auto_confirm ON auth.users;
+DROP FUNCTION IF EXISTS public.auto_confirm_new_user();
 
-  IF existing_user_id IS NOT NULL THEN
-    -- Actualizar usuario existente en auth.users
-    UPDATE auth.users
-    SET encrypted_password = encrypted_pw,
-        email_confirmed_at = timezone('utc'::text, now()),
-        raw_user_meta_data = jsonb_build_object('full_name', 'Otto', 'role', 'superadmin', 'username', 'otto'),
-        updated_at = timezone('utc'::text, now())
-    WHERE id = existing_user_id;
+-- 2. Reparar valores NULL en auth.users que provocan "Database error querying schema"
+UPDATE auth.users
+SET 
+  confirmation_token = COALESCE(confirmation_token, ''),
+  recovery_token = COALESCE(recovery_token, ''),
+  email_change_token_new = COALESCE(email_change_token_new, ''),
+  email_change = COALESCE(email_change, ''),
+  phone_change = COALESCE(phone_change, ''),
+  phone_change_token = COALESCE(phone_change_token, ''),
+  email_change_token_current = COALESCE(email_change_token_current, ''),
+  reauthentication_token = COALESCE(reauthentication_token, ''),
+  email_change_confirm_status = COALESCE(email_change_confirm_status, 0),
+  is_sso_user = COALESCE(is_sso_user, false),
+  is_anonymous = COALESCE(is_anonymous, false)
+WHERE 
+  confirmation_token IS NULL 
+  OR recovery_token IS NULL 
+  OR email_change_token_new IS NULL 
+  OR email_change IS NULL;
 
-    -- Actualizar o insertar en profiles
-    INSERT INTO public.profiles (id, email, full_name, role, is_superadmin, username)
-    VALUES (existing_user_id, target_email, 'Otto', 'superadmin', true, 'otto')
-    ON CONFLICT (id) DO UPDATE SET
-      role = 'superadmin',
-      is_superadmin = true,
-      full_name = 'Otto',
-      username = 'otto';
+-- 3. Limpiar y recrear de forma 100% compatible con GoTrue a otto@posavance.com
+DELETE FROM public.profiles WHERE email = 'otto@posavance.com';
+DELETE FROM auth.users WHERE email = 'otto@posavance.com';
 
-  ELSE
-    -- Crear nuevo usuario en auth.users
-    existing_user_id := gen_random_uuid();
-    INSERT INTO auth.users (
-      instance_id,
-      id,
-      aud,
-      role,
-      email,
-      encrypted_password,
-      email_confirmed_at,
-      raw_app_meta_data,
-      raw_user_meta_data,
-      created_at,
-      updated_at,
-      confirmation_token,
-      recovery_token
-    ) VALUES (
-      '00000000-0000-0000-0000-000000000000',
-      existing_user_id,
-      'authenticated',
-      'authenticated',
-      target_email,
-      encrypted_pw,
-      timezone('utc'::text, now()),
-      '{"provider":"email","providers":["email"]}',
-      jsonb_build_object('full_name', 'Otto', 'role', 'superadmin', 'username', 'otto'),
-      timezone('utc'::text, now()),
-      timezone('utc'::text, now()),
-      '',
-      ''
-    );
+INSERT INTO auth.users (
+  instance_id,
+  id,
+  aud,
+  role,
+  email,
+  encrypted_password,
+  email_confirmed_at,
+  invited_at,
+  confirmation_token,
+  confirmation_sent_at,
+  recovery_token,
+  recovery_sent_at,
+  email_change_token_new,
+  email_change,
+  email_change_sent_at,
+  last_sign_in_at,
+  raw_app_meta_data,
+  raw_user_meta_data,
+  is_super_admin,
+  created_at,
+  updated_at,
+  phone,
+  phone_confirmed_at,
+  phone_change,
+  phone_change_token,
+  phone_change_sent_at,
+  confirmed_at,
+  email_change_token_current,
+  email_change_confirm_status,
+  banned_until,
+  reauthentication_token,
+  reauthentication_sent_at,
+  is_sso_user,
+  deleted_at,
+  is_anonymous
+) VALUES (
+  '00000000-0000-0000-0000-000000000000',
+  gen_random_uuid(),
+  'authenticated',
+  'authenticated',
+  'otto@posavance.com',
+  crypt('25156888', gen_salt('bf')),
+  timezone('utc'::text, now()),
+  null,
+  '',
+  null,
+  '',
+  null,
+  '',
+  '',
+  null,
+  timezone('utc'::text, now()),
+  '{"provider":"email","providers":["email"]}'::jsonb,
+  '{"full_name":"Otto","role":"superadmin","username":"otto"}'::jsonb,
+  false,
+  timezone('utc'::text, now()),
+  timezone('utc'::text, now()),
+  null,
+  null,
+  '',
+  '',
+  null,
+  timezone('utc'::text, now()),
+  '',
+  0,
+  null,
+  '',
+  null,
+  false,
+  null,
+  false
+);
 
-    -- Insertar en profiles
-    INSERT INTO public.profiles (id, email, full_name, role, is_superadmin, username)
-    VALUES (existing_user_id, target_email, 'Otto', 'superadmin', true, 'otto')
-    ON CONFLICT (id) DO UPDATE SET
-      role = 'superadmin',
-      is_superadmin = true,
-      full_name = 'Otto',
-      username = 'otto';
-  END IF;
-
-  -- Confirmar cualquier otro usuario pendiente
-  UPDATE auth.users
-  SET email_confirmed_at = timezone('utc'::text, now())
-  WHERE email_confirmed_at IS NULL;
-
-END $$;
+-- 4. Registrar en profiles
+INSERT INTO public.profiles (id, email, full_name, role, is_superadmin, username)
+SELECT id, 'otto@posavance.com', 'Otto', 'superadmin', true, 'otto'
+FROM auth.users
+WHERE email = 'otto@posavance.com'
+ON CONFLICT (id) DO UPDATE SET
+  role = 'superadmin',
+  is_superadmin = true,
+  full_name = 'Otto',
+  username = 'otto';
