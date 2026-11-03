@@ -47,10 +47,18 @@ export interface SystemSettings {
   updated_at?: string;
 }
 
+export type AuditAction =
+  | 'creacion'
+  | 'marcado_pagado'
+  | 'actualizacion_comprobante'
+  | 'cancelacion'
+  | 'modificacion'
+  | 'eliminacion';
+
 export interface AuditLog {
   id: string;
   transaction_id: string;
-  accion: 'creacion' | 'marcado_pagado' | 'actualizacion_comprobante' | 'cancelacion' | 'modificacion';
+  accion: AuditAction;
   detalles: string;
   usuario_id?: string;
   usuario_nombre?: string;

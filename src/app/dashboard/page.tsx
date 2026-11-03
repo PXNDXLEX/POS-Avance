@@ -8,7 +8,8 @@ import { PagoMovilModal } from '@/components/PagoMovilModal';
 import { MarkPaidModal } from '@/components/MarkPaidModal';
 import { WhatsAppModal } from '@/components/WhatsAppModal';
 import { AuditLogModal } from '@/components/AuditLogModal';
-import { getTransactions } from '@/lib/transactions';
+import { DeleteConfirmModal } from '@/components/DeleteConfirmModal';
+import { getTransactions, deleteTransaction } from '@/lib/transactions';
 import { Transaction } from '@/lib/types';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -21,7 +22,7 @@ import {
 } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { profile, isConfigured } = useAuth();
+  const { profile, user, isAdmin, isSuperAdmin, isConfigured } = useAuth();
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,6 +32,7 @@ export default function DashboardPage() {
   const [selectedTxMarkPaid, setSelectedTxMarkPaid] = useState<Transaction | null>(null);
   const [selectedTxWhatsApp, setSelectedTxWhatsApp] = useState<Transaction | null>(null);
   const [selectedTxAudit, setSelectedTxAudit] = useState<Transaction | null>(null);
+  const [selectedTxDelete, setSelectedTxDelete] = useState<Transaction | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -42,6 +44,15 @@ export default function DashboardPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const handleDeleteConfirm = async (txId: string) => {
+    const res = await deleteTransaction(txId, user?.id, profile?.full_name);
+    if (res.error) {
+      throw new Error(res.error);
+    }
+    setTransactions((prev) => prev.filter((t) => t.id !== txId));
+    setSelectedTxDelete(null);
+  };
 
   const handleMarkPaidSuccess = (txId: string, openWhatsApp?: boolean) => {
     // Actualizar estado local inmediatamente
@@ -157,14 +168,23 @@ export default function DashboardPage() {
 
         <TransactionList
           transactions={transactions}
+          canDelete={isAdmin || isSuperAdmin}
           onOpenPagoMovil={(tx) => setSelectedTxPagoMovil(tx)}
           onOpenMarkPaid={(tx) => setSelectedTxMarkPaid(tx)}
           onOpenWhatsApp={(tx) => setSelectedTxWhatsApp(tx)}
           onOpenAuditLogs={(tx) => setSelectedTxAudit(tx)}
+          onDeleteTransaction={(tx) => setSelectedTxDelete(tx)}
         />
       </div>
 
       {/* Modales */}
+      {selectedTxDelete && (
+        <DeleteConfirmModal
+          transaction={selectedTxDelete}
+          onClose={() => setSelectedTxDelete(null)}
+          onConfirmDelete={handleDeleteConfirm}
+        />
+      )}
       {selectedTxPagoMovil && (
         <PagoMovilModal
           transaction={selectedTxPagoMovil}

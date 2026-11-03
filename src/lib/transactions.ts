@@ -282,6 +282,51 @@ export async function markAsPaid(
   }
 }
 
+/**
+ * Elimina una transacción (Acceso exclusivo para Admin y Superadmin)
+ */
+export async function deleteTransaction(
+  id: string,
+  userId?: string,
+  userFullName?: string
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured || !supabase) {
+    const current = await getTransactions();
+    const updated = current.filter((t) => t.id !== id);
+    localStorage.setItem(LOCAL_STORAGE_TX_KEY, JSON.stringify(updated));
+
+    addAuditLog({
+      transaction_id: id,
+      accion: 'eliminacion',
+      detalles: `Operación eliminada por ${userFullName || 'Administrador'}`,
+      usuario_id: isValidUuid(userId) ? userId : undefined,
+      usuario_nombre: userFullName,
+    }).catch(() => {});
+
+    return {};
+  }
+
+  try {
+    // Eliminar logs de auditoría asociados para garantizar integridad referencial
+    await supabase.from('audit_logs').delete().eq('transaction_id', id);
+
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error al eliminar transacción en Supabase:', error);
+      return { error: error.message };
+    }
+
+    return {};
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error al eliminar transacción';
+    return { error: msg };
+  }
+}
+
 export async function uploadComprobante(
   file: File,
   transactionId: string

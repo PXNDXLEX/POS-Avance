@@ -267,7 +267,7 @@ CREATE POLICY "Administradores y Superadmins pueden eliminar transacciones"
   USING (
     EXISTS (
       SELECT 1 FROM public.profiles
-      WHERE profiles.id = auth.uid() AND profiles.role IN ('admin', 'superadmin')
+      WHERE profiles.id = auth.uid() AND (profiles.role IN ('admin', 'superadmin') OR profiles.is_superadmin = true)
     )
   );
 
@@ -283,6 +283,17 @@ CREATE POLICY "Usuarios autenticados pueden insertar logs de auditoria"
   ON public.audit_logs FOR INSERT
   TO authenticated
   WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Administradores pueden eliminar logs de auditoria" ON public.audit_logs;
+CREATE POLICY "Administradores pueden eliminar logs de auditoria"
+  ON public.audit_logs FOR DELETE
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid() AND (profiles.role IN ('admin', 'superadmin') OR profiles.is_superadmin = true)
+    )
+  );
 
 -- ==============================================================================
 -- 10. REPARACIÓN Y CREACIÓN DEL SUPERADMIN "otto" (CLAVE: 25156888)

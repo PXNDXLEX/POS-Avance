@@ -17,22 +17,27 @@ import {
   ChevronRight,
   History,
   AlertCircle,
+  Trash2,
 } from 'lucide-react';
 
 interface TransactionListProps {
   transactions: Transaction[];
+  canDelete?: boolean;
   onOpenPagoMovil: (tx: Transaction) => void;
   onOpenMarkPaid: (tx: Transaction) => void;
   onOpenWhatsApp: (tx: Transaction) => void;
   onOpenAuditLogs: (tx: Transaction) => void;
+  onDeleteTransaction?: (tx: Transaction) => void;
 }
 
 export function TransactionList({
   transactions,
+  canDelete = false,
   onOpenPagoMovil,
   onOpenMarkPaid,
   onOpenWhatsApp,
   onOpenAuditLogs,
+  onDeleteTransaction,
 }: TransactionListProps) {
   const [filterStatus, setFilterStatus] = useState<'todos' | 'pendiente' | 'pagado'>('todos');
   const [searchQuery, setSearchQuery] = useState('');
@@ -292,6 +297,18 @@ export function TransactionList({
                     >
                       <History className="w-4 h-4" />
                     </button>
+
+                    {/* Eliminar Operación (Solo Administradores y Superadmins) */}
+                    {canDelete && (
+                      <button
+                        type="button"
+                        title="Eliminar operación permanentemente (Admin)"
+                        onClick={() => onDeleteTransaction && onDeleteTransaction(tx)}
+                        className="p-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
